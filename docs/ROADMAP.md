@@ -52,24 +52,24 @@ Gate (Sat 22:00): S1, S2, S3 must pass. If S1 fails, switch primary backend to L
 
 ## M1: Protocol package (Sat night to Sun, about 5h)  [ ]
 Deliverables
-- `packages/protocol`: `encodeSale()`, `decodeSale()`, `lnurlEncode/Decode`, `newSaleId()`, `newConfirmCode()` (6 digits, uniform), `confirmCodeCheck()` (store only an HMAC of the code, constant-time compare).
-- Payload: version byte, deviceId, random 96-bit IV, AES-256-GCM ciphertext+tag over `{amountXofMinor, sid, code, ts}`; the version and deviceId are authenticated as AAD.
+- `packages/protocol`: `deriveKeys()` (HKDF from one 32-byte device secret into enc, code and auth keys), `encodeSale()`, `decodeSale()`, `peekDeviceId()`, `lnurlEncode/Decode`, `buildSaleLnurl()`, `toQrString()`, `deriveConfirmCode()` and `verifyConfirmCode()`. The confirm code is derived as HMAC-SHA256(codeKey, sid) mod 10^6, 6 digits; it is never stored or transmitted, and both sides recompute it from the sid (constant-time compare).
+- Payload (58 bytes, 78 base64url chars): version byte, deviceId, random 96-bit IV, AES-256-GCM ciphertext+tag over `{amountXof u32, sid 8 bytes, currency}`; the version and deviceId are authenticated as AAD. No timestamp. Full spec in `docs/ARCHITECTURE.md` "Protocol v1".
 Security requirements
 - Never reuse an IV with a key (random 96-bit IV, never a stored counter, since storage can be cleared).
 - Fail closed on any parse or tag error; error messages must not reveal which check failed.
 - Amount bounds enforced both sides (min 50 XOF, max configurable).
 Tests (vitest, written first)
 - Round trip; flipped bit in each field rejected; wrong device key rejected; truncated and oversized payload rejected; version downgrade rejected; confirm code distribution check; constant-time compare used.
-Acceptance: `pnpm --filter protocol test` green with at least 15 cases; QR payload under 220 chars.
+Acceptance: `pnpm --filter @jaay/protocol test` green with at least 30 cases; token exactly 78 chars and LNURL under 220 chars with a base URL of 30 chars or fewer.
 Edge cases: amount 0, negative, non-integer, giant; deviceId unknown; unicode junk in query string.
 
 ## M2: Server (Sun to Mon, about 7h)  [ ]
 Endpoints
-- `GET /lnurlp/:deviceId?p=...`: verify and decrypt, create the sale record, return LNURL-pay metadata with `minSendable = maxSendable = sats(amountXof)` using the quote lock.
-- `GET /lnurlp/:deviceId/cb?p=...&amount=...`: create invoice via backend adapter, return `pr` and a `url` successAction pointing to `/r/:token`.
-- `GET /r/:token`: static, under 20 KB; shows "not paid yet" until `lookupInvoice` says settled, then the confirm code in large type, amount, merchant name.
-- `POST /v1/sales/reconcile` (device-authenticated with HMAC over body and a timestamp window): returns paid, unpaid, expired for a list of sale ids.
-- `POST /v1/admin/enroll` and a minimal admin page: create device, show enrollment QR once, store the receive-only NWC string encrypted at rest with an env key.
+- `GET /lnurlp?p=...`: the deviceId lives inside the token; `peekDeviceId` picks the device keys, then verify and decrypt, create the sale record, return LNURL-pay metadata with `minSendable = maxSendable = sats(amountXof)` using the quote lock.
+- `GET /lnurlp/cb?p=...&amount=...`: create invoice via backend adapter, return `pr` and a `url` successAction pointing to `/r/:token`.
+- `GET /r/:token`: static, under 20 KB; shows "not paid yet" until `lookupInvoice` says settled, then the confirm code (recomputed from the sid with the device code key) in large type, amount, merchant name.
+- `POST /v1/sales/reconcile` (device-authenticated with an HMAC under the device auth key over body and a timestamp window): returns paid, unpaid, expired for a list of sale ids.
+- `POST /v1/admin/enroll` and a minimal admin page: create device (device id and 32-byte device secret), show enrollment QR once, store the device secret and the receive-only NWC string encrypted at rest with an env key.
 Security requirements
 - NWC permission check at enroll: refuse a connection that allows `pay_invoice`.
 - Idempotency: same `sid` always returns the same invoice and receipt token; second scan never creates a second sale.
@@ -136,3 +136,4 @@ Signed Nostr receipt event; Wolof strings; second backend adapter demo; USSD-sty
 |---|---|---|
 | 2026-11-13 | P0 | Strategy and roadmap written |
 | 2026-11-13 17:30 EAT | P0 M0 | Repo skeleton done: pnpm workspace (protocol, server, pos, customer-sim), MIT license, .env.example, quick-ops and scout agents. `pnpm lint`, `pnpm typecheck`, `pnpm test` (4 files, 4 tests passed) and `pnpm build` all exit 0. Discord questions not yet posted. |
+| 2026-11-13 17:55 EAT | P2 M1 | Protocol package done per D1 to D6 (see docs/ARCHITECTURE.md). `pnpm --filter @jaay/protocol test`: 6 files, 127 tests passed, including Python known-answer vectors, 116 bit flips, 10,000-encode IV and sid uniqueness, bech32 oracle over 300 URLs and the LUD-01 vector. Token 78 chars, LNURL 201 chars with a 30-char base URL. Root lint, typecheck, test and build exit 0. Forbidden-import lint rule shown failing then passing. |
