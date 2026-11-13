@@ -117,8 +117,8 @@ export function createApp(d: AppDeps) {
   });
 
   // ---------- Enrollment ----------
-  app.post("/api/enroll", bodyLimit({ maxSize: 4096, onError: (c) => c.json({ error: "enrollment rejected" }, 413) }), async (c) => {
-    if (!allowed(c, "enroll")) return c.json({ error: "too many requests" }, 429);
+  app.post("/api/enroll", bodyLimit({ maxSize: 4096, onError: (c) => c.json({ error: "enrollment rejected", ...sb }, 413) }), async (c) => {
+    if (!allowed(c, "enroll")) return c.json({ error: "too many requests", ...sb }, 429);
     const reject = () => c.json({ error: "enrollment rejected", ...sb }, 400);
     let body: Record<string, unknown>;
     try {

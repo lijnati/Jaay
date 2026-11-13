@@ -65,22 +65,22 @@ Edge cases: amount 0, negative, non-integer, giant; deviceId unknown; unicode ju
 
 ## M2: Server (Sun to Mon, about 7h)  [ ]
 Endpoints
-- `GET /lnurlp?p=...`: the deviceId lives inside the token; `peekDeviceId` picks the device keys, then verify and decrypt, create the sale record, return LNURL-pay metadata with `minSendable = maxSendable = sats(amountXof)` using the quote lock.
-- `GET /lnurlp/cb?p=...&amount=...`: create invoice via backend adapter, return `pr` and a `url` successAction pointing to `/r/:token`.
-- `GET /r/:token`: static, under 20 KB; shows "not paid yet" until `lookupInvoice` says settled, then the confirm code (recomputed from the sid with the device code key) in large type, amount, merchant name.
-- `POST /v1/sales/reconcile` (device-authenticated with an HMAC under the device auth key over body and a timestamp window): returns paid, unpaid, expired for a list of sale ids.
-- `POST /v1/admin/enroll` and a minimal admin page: create device (device id and 32-byte device secret), show enrollment QR once, store the device secret and the receive-only NWC string encrypted at rest with an env key.
+- [x] `GET /lnurlp?p=...`: the deviceId lives inside the token; `peekDeviceId` picks the device keys, then verify and decrypt, create the sale record, return LNURL-pay metadata with `minSendable = maxSendable = sats(amountXof)` using the quote lock.
+- [x] `GET /lnurlp/cb?p=...&amount=...`: create invoice via backend adapter, return `pr` and a `url` successAction pointing to `/r/:token`.
+- [~] `GET /r/:token` (done except the merchant name, not shown yet): static, under 20 KB; shows "not paid yet" until `lookupInvoice` says settled, then the confirm code (recomputed from the sid with the device code key) in large type, amount, merchant name.
+- [ ] `POST /v1/sales/reconcile` (device-authenticated with an HMAC under the device auth key over body and a timestamp window): returns paid, unpaid, expired for a list of sale ids.
+- [~] `POST /v1/admin/enroll` and a minimal admin page (built as `POST /api/enroll`, no admin page or QR yet): create device (device id and 32-byte device secret), show enrollment QR once, store the device secret and the receive-only NWC string encrypted at rest with an env key.
 Security requirements
-- NWC permission check at enroll: refuse a connection that allows `pay_invoice`.
-- Idempotency: same `sid` always returns the same invoice and receipt token; second scan never creates a second sale.
-- Receipt token 128-bit random; per-IP and per-device rate limits on all public endpoints; quote lock 120s; invoice expiry 10 min.
-- Logging: structured, no phone numbers, no NWC string, no full payload; device id hashed. Add a log-scrubber test that greps captured logs.
-- CORS locked down; security headers on receipt page.
-- Sale statuses include `paid_late`: a payment that arrives after the sale window is accepted and flagged, never rejected.
-- Device limits (min and max XOF) come from the enrollment config.
-- The server runs via tsx in dev and is bundled for production, because the `packages/protocol` dist is not loadable by plain Node.
+- [x] NWC permission check at enroll: refuse a connection that allows `pay_invoice`.
+- [x] Idempotency: same `sid` always returns the same invoice and receipt token; second scan never creates a second sale.
+- [~] Receipt token 128-bit random; per-IP (done) and per-device (NOT done) rate limits on all public endpoints; quote lock 120s; invoice expiry 10 min.
+- [x] Logging: structured, no phone numbers, no NWC string, no full payload; device id hashed. Add a log-scrubber test that greps captured logs.
+- [x] CORS locked down; security headers on receipt page.
+- [x] Sale statuses include `paid_late`: a payment that arrives after the sale window is accepted and flagged, never rejected.
+- [x] Device limits (min and max XOF) come from the enrollment config.
+- [x] The server runs via tsx in dev and is bundled for production, because the `packages/protocol` dist is not loadable by plain Node.
 Tests
-- Integration with the sandbox backend: golden flow; replay; tamper; unknown device; pay-underpay-overpay attempts rejected by exact amount; pre-payment receipt returns no code; rate limit triggers; reconcile auth failure; expired invoice.
+- [~] Integration with the sandbox backend (all done except reconcile auth failure, as reconcile is not built): golden flow; replay; tamper; unknown device; pay-underpay-overpay attempts rejected by exact amount; pre-payment receipt returns no code; rate limit triggers; reconcile auth failure; expired invoice.
 Acceptance: `pnpm --filter server test` green; manual curl script in `scripts/demo-curl.sh` reproduces the golden flow against sandbox; receipt page measured under 20 KB.
 Edge cases: FX source down (use last good rate up to 10 min, then refuse with clear message); backend timeout; duplicate callbacks; clock skew between merchant and server (server time is authoritative).
 
@@ -144,3 +144,4 @@ Signed Nostr receipt event; Wolof strings; second backend adapter demo; USSD-sty
 | 2026-11-13 19:45 EAT | P1 test fix | Uniformity test given an explicit 30 s timeout (b58f74b, pushed). A second heavy M1 test, "10,000 encodes never repeat an IV or a sid", then hit the 5 s default in 2 of 3 runs on this loaded machine (CPU 63 to 73 percent from other apps); not changed, because Part 0 allowed only the one test. |
 | 2026-11-13 20:20 EAT | P1 S3 | Offline PWA GO. `spikes/s3-offline/check.ts` 13/13 PASS on two runs in Chromium (Playwright 1.64.0): offline reload and full restart work, QR v8-M 49x49 at 5 px per module decodes to the exact LNURL string (alphanumeric), non-extractable DeviceKeys persist in IndexedDB and still work, offline ledger plus online reconcile stub, http LAN origin shown NOT secure, prompt-style SW update safe for offline users. First load 13.2 KB gzipped with qrcode-generator (chosen) vs 14.8 KB with qrcode. Real-phone airplane mode NOT RUN. |
 | 2026-11-13 20:25 EAT | P1 S4 S5 | Research only, via two Sonnet subagents, spot-checked by Opus. S4: peg 655.957 verified at BCEAO; Kraken XBTEUR primary, Coinbase Exchange BTC-EUR fallback, 60 s server poll, 120 s quote lock. S5: url successAction shown behind a tap by Phoenix Android, Zeus, Alby Go (verified in source) and Alby extension; others UNKNOWN. Design: url action plus receipt URL in text/plain, receipt settlement-gated. Details in spikes/NOTES.md. |
+| 2026-11-13 21:30 EAT | P2 M2 | Server built (apps/server, Hono, node:sqlite, esbuild bundle). 111 server tests green, covering security items 1 to 11 (uniform LNURL error, exact amount, replay and idempotency, receipt gating over every status, receipt token and rate limits, log scrubber with sentinels, size and header limits, CORS and CSP, NWC spend-method rejection, relay drop and reconnect with a fake transport, sealed secrets and a db byte scan). Bundle runs with plain node: golden path 10/10 PASS over HTTP. Regtest against real Alby Hub: golden path PASS, relay down fails closed in 218 ms, but Alby Hub did not re-subscribe after the local relay restarted (recovery FAIL, hub side). docker compose NOT RUN (no Docker). Reconcile endpoint not built (not in today's endpoint list). Added anti-SSRF allowlists after a security review. |
