@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>jaay s3</title>
+    <style>
+      body { margin: 0; font: 18px system-ui, sans-serif; background: #fff; color: #000; }
+      main { max-width: 360px; margin: 0 auto; padding: 16px; }
+      input, button { font: inherit; padding: 12px; width: 100%; box-sizing: border-box; margin: 4px 0; }
+      button { background: #000; color: #fff; border: 0; }
+      canvas { display: block; margin: 12px auto; width: 300px; height: 300px; }
+      code { word-break: break-all; font-size: 11px; }
+      .sandbox { background: #000; color: #fff; text-align: center; font-size: 12px; padding: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="sandbox">SPIKE S3 SANDBOX, TEST KEY, REGTEST ONLY</div>
+    <main>
+      <h1>jaay</h1>
+      <p>build <span id="build"></span> <span id="net"></span></p>
+      <div id="update" hidden><button id="apply">Mettre a jour</button></div>
+      <form id="f">
+        <input id="amount" inputmode="numeric" value="1000" aria-label="Montant XOF" />
+        <button id="create" type="submit">Create</button>
+      </form>
+      <canvas id="qr" width="300" height="300"></canvas>
+      <p>ventes: <span id="ledger">0</span></p>
+      <code id="lnurl"></code>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

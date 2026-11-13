@@ -3,6 +3,9 @@
 | Spike | Date | Result | Evidence |
 | ----- | ---- | ------ | -------- |
 | S1 NWC backend | 2026-11-13 | GO: Alby Hub on regtest LND, receive-only NWC, 22/22 checks green on two runs | `spikes/s1-nwc/probe.ts`, section below |
+| S3 Offline PWA | 2026-11-13 | GO: 13/13 checks green on two runs, first load 13.2 KB gzipped, CryptoKey persists in IndexedDB | `spikes/s3-offline/check.ts`, section below |
+| S4 FX source | 2026-11-13 | Research: Kraken primary, Coinbase Exchange fallback, peg 655.957 verified at BCEAO | section below |
+| S5 Wallets (LUD-09) | 2026-11-13 | Research: url successAction shown behind a tap by Phoenix (Android), Zeus, Alby Go, Alby extension; build url plus text/plain fallback | section below |
 
 ## S1: receive-only NWC backend
 
@@ -127,3 +130,146 @@ Gotchas:
 - @getalby/sdk 9.0.0 types (NWCClient, Nip47WalletError, logger option): https://www.npmjs.com/package/@getalby/sdk
 
 Time spent: 15:52 to 16:30 UTC (38 minutes) to the second green run, plus write-up. About 30 minutes of it was environment work (Docker check, slow downloads, btcd swap). The NWC path passed on its first run, within a minute of the stack printing READY.
+
+## S3: offline PWA shell
+
+Question: can a Vite PWA that is loaded once keep working with the network completely off, including creating a sale QR with the real protocol and keeping a ledger, and what does it cost in bytes?
+
+Answer: yes. All 13 checks pass in Chromium on two consecutive runs (45 s and 32 s), and the whole first load is 13.2 KB gzipped.
+
+### What ran
+
+- Vite 8.3.8 builds a one-screen page: amount, Create, a 300 px canvas QR, the LNURL text, a ledger count and a SANDBOX banner. It imports the real `packages/protocol` source through a Vite alias (read only, not modified). Spike-only test key: the protocol vector secret (bytes 0..31) and base URL `https://pay.jaay.example.sn/v1`.
+- Service worker: hand-written (about 35 lines, `sw-template.js`) plus a 20-line Vite plugin that injects the precache list and a content hash. Chosen over vite-plugin-pwa because it adds no Workbox runtime, the update behavior is explicit and readable, and the shell is only six files. The cost is that we own cache versioning, which the content hash covers.
+- Cache strategy: cache first for same-origin GET, navigations fall back to the cached `index.html`, old caches are deleted on activate.
+- Update strategy: prompt, not skipWaiting on install. A new worker installs in the background and waits; the page shows an update button; on tap the page posts `SKIP_WAITING`, the new worker claims the page and the page reloads once. Reason: never swap code under a merchant in the middle of a sale.
+- `check.ts` builds twice (one per QR library), serves the build from a local static server that can be switched off (it destroys sockets, so it is a real outage, not a 404), and drives Chromium with Playwright, using persistent profiles so the service worker, Cache Storage and IndexedDB survive a full browser restart.
+
+Versions: vite 8.3.8, qrcode-generator 2.0.4, qrcode 1.5.4, jsqr 1.4.0, pngjs 7.0.0, playwright 1.64.0 with chromium-1248 (cached locally), tsx 4.23.15, Node 24.18.0, Windows 10.
+
+### Results
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1a | Visit online, close page, server down and `setOffline(true)`, reload: renders and creates a sale | PASS | |
+| 1b | Browser context closed and reopened on the same profile, offline from the first request: works, earlier ledger entry still there | PASS | ledger 1 before the new sale |
+| 2 | Canvas screenshot decoded with jsQR equals the QR string and `LIGHTNING:` + uppercase LNURL; the decoded LNURL leads to a token that decrypts to 1000 XOF | PASS (both libraries) | decoded mode alphanumeric, version 8 |
+| 3 | Non-extractable HKDF-derived keys (`DeviceKeys`: AES-GCM and two HMAC) stored as CryptoKey objects in IndexedDB survive reload and full restart; they open a token sealed before the reload, give the same confirm code, round trip a new sale, and `exportKey` rejects | PASS | `extractable: false`, `exportRejected: true` |
+| 4a | 3 sales written offline persist across an offline reload | PASS | count 3 |
+| 4b | Going online fires the `online` handler, which runs the reconcile stub | PASS | 1 run, 3 sales marked checked |
+| 5a | `crypto.subtle` works offline on `http://localhost` (secure context) | PASS | `isSecureContext: true` |
+| 5b | On `http://<lan-ip>:4173` the page is NOT a secure context: no `crypto.subtle`, no service worker (expected failure, shown) | PASS | `isSecureContext: false`, `subtle: undefined`, `sw: false` |
+| 6 | First load under 150 KB gzipped | PASS | 13.2 KB with qrcode-generator, 14.8 KB with qrcode |
+| 7a | v2 deployed while the user is offline: user keeps a working v1 | PASS | |
+| 7b | Back online: v2 installs and waits, update button shown, page still v1 and still creates sales | PASS | |
+| 7c | After tapping update: v2 runs, and v2 works offline | PASS | |
+
+5b means real deployments need HTTPS. A merchant opening the app over plain http on a LAN address gets no Web Crypto and no service worker, so the app cannot work there.
+
+### QR numbers
+
+The QR string is 211 characters (`LIGHTNING:` plus the 201-char LNURL from the 30-char test base URL), all in the QR alphanumeric set. Rendered at 300 px with a 4-module quiet zone and whole pixels per module:
+
+| ECC | Version | Modules | px per module at 300 px |
+|---|---|---|---|
+| L (7%) | 7 | 45 x 45 | 5 |
+| **M (15%)** | **8** | **49 x 49** | **5** |
+| Q (25%) | 10 | 57 x 57 | 4 |
+| H (30%) | 12 | 65 x 65 | 4 |
+
+Choice: level M. It keeps the same 5 px modules as L while doubling the recovery margin for glare and smudges; Q and H drop to 4 px. Both libraries produced identical versions and module counts. qrcode-generator is given the alphanumeric mode explicitly; qrcode picks it by itself. A shorter production base URL (`https://jaay.sn`, LNURL 177 chars) would shrink the symbol further [INFERRED]. Decoding was from a clean screenshot, not a camera; a phone camera test is still to do (the S5 manual test covers it).
+
+### Byte budget
+
+Measured as gzip -9 of every file the browser fetched on a first visit with a fresh profile (page load plus service worker install), HTTP headers excluded.
+
+| Library | Requests | Unique files | First load gz | First load raw | Precache gz | JS raw |
+|---|---|---|---|---|---|---|
+| **qrcode-generator 2.0.4** | 8 | 6 | **13.2 KB** | 33.1 KB | 12.6 KB | 28.6 KB |
+| qrcode 1.5.4 | 8 | 6 | 14.8 KB | 36.5 KB | 14.2 KB | 32.0 KB |
+
+Chosen QR library: qrcode-generator (1.6 KB gz smaller, no dependencies, meets check 2). Neither the QR library nor the protocol code comes close to the 150 KB target: the whole JS bundle including protocol, QR and IndexedDB code is 11.0 KB gz.
+
+### Answer for M3: how to store the device key
+
+Store the derived `DeviceKeys` (three non-extractable CryptoKey objects) directly in IndexedDB. Do not store the raw 32-byte secret: derive once at enrollment, then drop it. This held across reload and full browser restart in Chromium [VERIFIED: run].
+
+Threat model consequences for Hard rule 3: script running in the app's origin (an XSS), or someone holding the unlocked phone, can still use the keys to compute codes or seal tokens, but cannot copy them off the device. So XSS prevention (strict CSP, no third-party scripts) stays essential, and the 3-attempt limit per sale stays the guard against guessing. If a browser ever fails to persist CryptoKeys, the fallback is wrapping the secret with a key from a user PIN (PBKDF2), which adds a PIN prompt at app start. That is not needed on current evidence.
+
+### Platform caveats (not verified here)
+
+- iOS Safari may evict script-writable storage (IndexedDB, Cache Storage) for sites not used for 7 days, and home-screen installed web apps are reported to be exempt [INFERRED]. M3 should call `navigator.storage.persist()` and ask merchants to install to the home screen.
+- Android Chrome installability may require PNG icons (192 and 512) in addition to the SVG used here [INFERRED]. Not tested.
+- Opening the installed app from its icon in airplane mode on a real phone: NOT RUN. Playwright offline emulation in desktop Chromium is not the same as airplane mode on Android or iOS. This is the main thing to test by hand in M3.
+- Persistence of CryptoKey in IndexedDB on Safari and Firefox: NOT RUN (Chromium only).
+
+### Reproduce
+
+```bash
+cd spikes/s3-offline
+npm install
+npx playwright install chromium   # skip if chromium-1248 is already cached
+npx tsx check.ts                  # builds both variants, prints PASS/FAIL per check, about 45 s
+```
+
+Gotchas: `context.storageState` does not carry service workers or Cache Storage, so the restart test uses `launchPersistentContext` with the same profile directory. On Windows, build paths must go through `fileURLToPath`, because a URL pathname keeps `%20`.
+
+Time: 17:05 to 17:20 UTC for the build and two green runs, plus write-up.
+
+## S4: FX source (research only)
+
+Peg: 1 EUR = 655.957 XOF, fixed since 1 January 1999. BCEAO's own history page lists "Pegging of the CFA F to the euro, January 1st, 1999, CFA F 655.957 = 1euro" [VERIFIED: https://www.bceao.int/en/content/history-cfa-franc, fetched with curl, HTTP 200]. Banque de France also lists 1 euro = 655,957 FCFA [search result excerpt, not fetched: https://www.banque-france.fr/system/files/2025-04/Fiche_CMAF_23.04.2025.pdf]. So `XOF per BTC = EUR per BTC x 655.957`, and only EUR/BTC needs a market source.
+
+| Source | Endpoint | Key | Answered | Rate limit | Terms |
+|---|---|---|---|---|---|
+| Kraken | `https://api.kraken.com/0/public/Ticker?pair=XBTEUR`, last trade `result.XXBTZEUR.c[0]` | none | 200 [VERIFIED: called twice] | public endpoints limited by IP; about 1 call per second stays within limits [search excerpt of https://support.kraken.com/articles/206548367, not fetched] | [UNKNOWN] |
+| Coinbase Exchange | `https://api.exchange.coinbase.com/products/BTC-EUR/ticker`, field `price` | none | 200 [VERIFIED: called twice] | "Public endpoints are throttled by IP", number not found [reported by subagent from https://docs.cdp.coinbase.com/exchange/rest-api/rate-limits] | [UNKNOWN] |
+| CoinGecko keyless | `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur` | none | 200 [VERIFIED: called twice] | about 5 calls per minute, dynamic, shared per IP [search excerpt of https://docs.coingecko.com/docs/keyless-public-api, not fetched] | [UNKNOWN] |
+
+Also answered 200 with no key (subagent calls, not repeated by me): Coinbase v2 spot `https://api.coinbase.com/v2/prices/BTC-EUR/spot`, Bitstamp `https://www.bitstamp.net/api/v2/ticker/btceur/`, Binance `https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR`. mempool.space `/api/v1/prices` timed out from this network. At 17:09 UTC the exchanges agreed within about 0.1%.
+
+Pick: primary Kraken (native EUR market, keyless, documented IP limit), fallback Coinbase Exchange (different company, keyless). CoinGecko is a third option only, because its keyless limit is low and shared.
+
+Design for M2:
+- The server polls the primary every 60 s (far below any limit above), and the fallback only when the primary fails. Clients never call an exchange.
+- If both answer and differ by more than 2%, refuse new quotes and log it [design choice].
+- If both fail, use the last good rate for up to 10 minutes, then refuse with a clear message (ROADMAP M2 edge case).
+- Quote lock 120 s: the sats amount is fixed when the wallet first requests `/lnurlp`, and the callback must come within 120 s.
+- Stored per sale: `eurPerBtc`, `source` (kraken or coinbase), `fetchedAt` (server time), `quotedAt`, `sats`.
+- Terms of use for Kraken and Coinbase public data were not read. Read them before the public demo.
+
+## S5: LUD-09 url successAction (research only)
+
+LUD-09: the wallet keeps the successAction and shows it once the payment succeeds. For `url` it "should give the user a popup which displays `description`, `url`, and a 'open' button", and the url domain must match the callback domain [subagent quote from https://raw.githubusercontent.com/lnurl/luds/luds/09.md].
+
+| Wallet | Shows `url`? | How | Evidence |
+|---|---|---|---|
+| Phoenix (Android) | YES | link button, only when the url passes the domain check, otherwise plain text | [VERIFIED: https://github.com/ACINQ/phoenix/blob/cadfa5f6/phoenix-android/src/main/kotlin/fr/acinq/phoenix/android/payments/details/splash/SplashOutgoingLightning.kt#L177-L184, read by me] |
+| Phoenix (iOS) | [UNKNOWN] | file names match, source not read | |
+| Zeus | YES | tap opens it via `Linking.openURL` | [VERIFIED: https://github.com/ZeusLN/zeus/blob/17cc896a/views/LnurlPay/Success.tsx#L27-L34 and L72, read by me] |
+| Alby Go | YES, only if `description` is non-empty | "Open Link" button | [VERIFIED: https://github.com/getAlby/go/blob/4e1ff455/components/SuccessMessage.tsx#L29-L49, read by me] |
+| Alby browser extension | YES | url plus open button | [subagent: https://github.com/getAlby/lightning-browser-extension/blob/91dba0a2/src/app/screens/LNURLPay/index.tsx#L199-L203, not re-read by me] |
+| Breez (Spark SDK) | PARTIAL | SDK returns the action and validates the domain; display depends on the app | [subagent: https://github.com/breez/spark-sdk/blob/main/docs/breez-sdk/src/guide/lnurl_pay.md#L41, not re-read by me] |
+| Wallet of Satoshi, Muun, Blink, Bitkit, Aqua | [UNKNOWN] | closed source or no code found | |
+| Machankura, Bitnob, Tando | [UNKNOWN] | closed source, no docs found | |
+
+No wallet found opens the url automatically; every one that supports it shows it behind a tap. Whether wallets show the metadata `text/plain` before paying is [UNKNOWN] for every wallet (not read).
+
+Recommended receipt design (build both in M2; they cost little):
+1. Primary: `successAction = { tag: "url", description: "Recu Jaay / Jaay receipt", url: "https://<same host as callback>/r/<receiptToken>" }`. Use the same host as the callback (Phoenix and Breez check it), and always a non-empty `description` (Alby Go hides the action otherwise).
+2. Fallback for wallets that ignore it: the metadata `text/plain` ends with the receipt URL, for example `jaay: 1000 XOF, recu: https://jaay.sn/r/<receiptToken>`. It is visible before payment, which is acceptable because the receipt page shows the confirm code only after settlement (Hard rule 4).
+3. The receipt page stays settlement-gated either way, and customer-sim implements the url action so the demo does not depend on any third-party wallet.
+
+Build first: the url successAction plus the text/plain line, in the same M2 change, since the fallback is one string.
+
+Manual test (5 minutes, with a phone wallet that can pay the demo backend, against the deployed demo):
+1. On the merchant PWA, enter 100 XOF and press Create.
+2. Scan the QR with the wallet. Note whether the wallet shows the description text and the receipt link before paying.
+3. Pay. Note whether a success screen shows the description and an open button or link.
+4. Tap it. The receipt page must open on the demo host and show the 6-digit code and the amount.
+5. If no link was shown, open the receipt link from the description by hand and check the same page.
+6. Create a second sale and, before paying it, open its receipt link from the description: it must say not paid yet and show no code.
+7. Type the first sale's code on the merchant PWA: it must be accepted, and a wrong code must be rejected.
+8. Record wallet name, version, platform, and the results of steps 2 to 7 in a table here.
+
+Research was delegated to two Sonnet subagents (quick-ops) per CLAUDE.md, then spot-checked: the peg page, three FX endpoints and three wallet code citations were re-fetched by the main session.
