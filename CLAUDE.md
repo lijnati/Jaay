@@ -25,7 +25,7 @@ The main session runs on Opus 5.5. Use cheaper models for easy work through suba
 ## Hard rules (never break)
 1. No mainnet. Regtest or signet only. Never touch real funds.
 2. Every mock or simulation is labeled in the UI, README and video. The hosted demo shows a permanent SANDBOX banner.
-3. The 6-digit confirm code is never rendered on the merchant screen. The merchant only types a code and the device compares it with a stored HMAC (constant-time).
+3. The 6-digit confirm code is never rendered on the merchant screen and never sent in the payload. It is derived from the sale id with a device-key HMAC. The merchant only types a code, and the device recomputes and compares it in constant time (best effort in JS), with at most 3 attempts per sale.
 4. The receipt page never reveals the confirm code before the invoice is settled.
 5. The server's NWC connection must be receive-only. Refuse any connection that permits `pay_invoice`.
 6. AES-GCM IVs are random 96-bit values, never a stored counter. Never reuse an IV with a key.

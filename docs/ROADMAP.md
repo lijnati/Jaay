@@ -76,6 +76,9 @@ Security requirements
 - Receipt token 128-bit random; per-IP and per-device rate limits on all public endpoints; quote lock 120s; invoice expiry 10 min.
 - Logging: structured, no phone numbers, no NWC string, no full payload; device id hashed. Add a log-scrubber test that greps captured logs.
 - CORS locked down; security headers on receipt page.
+- Sale statuses include `paid_late`: a payment that arrives after the sale window is accepted and flagged, never rejected.
+- Device limits (min and max XOF) come from the enrollment config.
+- The server runs via tsx in dev and is bundled for production, because the `packages/protocol` dist is not loadable by plain Node.
 Tests
 - Integration with the sandbox backend: golden flow; replay; tamper; unknown device; pay-underpay-overpay attempts rejected by exact amount; pre-payment receipt returns no code; rate limit triggers; reconcile auth failure; expired invoice.
 Acceptance: `pnpm --filter server test` green; manual curl script in `scripts/demo-curl.sh` reproduces the golden flow against sandbox; receipt page measured under 20 KB.

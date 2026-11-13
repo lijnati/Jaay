@@ -44,7 +44,7 @@ Published criteria, no weights. [VERIFIED] Rules page adds originality and techn
 
 ## 4. Unique technical innovation
 The hard part is four things working together, not any single trick:
-1. Offline sale protocol: merchant device creates an AES-256-GCM encrypted payload (amount in XOF minor units, random sale id, 6-digit confirm code, device id) packed into an LNURL-pay QR. Tamper fails closed.
+1. Offline sale protocol: merchant device creates an AES-256-GCM encrypted payload (amount in XOF, random sale id, device id; the 6-digit confirm code is derived from the sale id with a device-key HMAC and is never sent) packed into an LNURL-pay QR. Tamper fails closed.
 2. FX at scan time: because the payload carries XOF, the server converts to sats when the customer scans, with a short quote lock. Fixes the stale-rate problem of offline sats pricing.
 3. Settlement-gated receipt: after the customer pays, the wallet shows a link (LUD-09 `url` success action). The receipt page reveals the confirm code only once the invoice is settled. A customer who scans but never pays cannot extract the code. [INFERRED design, wallet support for the url action: UNKNOWN, spike S5]
 4. Reconciliation: every offline sale is logged locally with its sale id; when the merchant is online the device asks the server for the true status and flags any sale accepted on the code alone that was never paid.
