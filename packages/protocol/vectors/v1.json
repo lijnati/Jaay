@@ -1,0 +1,31 @@
+{
+  "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "deviceId": "QEFCQ0RFRkdISUpLTE1OTw",
+  "iv": "oKGio6Slpqeoqaqr",
+  "amountXof": 2500,
+  "sid": "ABEiM0RVZnc",
+  "token": "AUBBQkNERUZHSElKS0xNTk-goaKjpKWmp6ipqqsUevIN1fMcHchO-bmAeb6Nf9Tu_c_ekaEuyb-4mw",
+  "authHmacOfTest": "Q30MblBEo-W0Onrx0Me2K7_bJH16k2KYRcz4jMjHnsM",
+  "codes": [
+    {
+      "sid": "oj2pi0jxQKI",
+      "code": "887225"
+    },
+    {
+      "sid": "ayBSJnNtoW4",
+      "code": "274916"
+    },
+    {
+      "sid": "P4y2VFHtQ6s",
+      "code": "241924"
+    },
+    {
+      "sid": "1j8g205wynU",
+      "code": "551269"
+    },
+    {
+      "sid": "fFUAhs-S46M",
+      "code": "268474"
+    }
+  ]
+}
