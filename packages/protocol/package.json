@@ -9,5 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "bech32": "^2.0.0"
   }
 }
