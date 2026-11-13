@@ -37,6 +37,7 @@ export class LnbitsBackend implements InvoiceBackend {
           method,
           headers: { "X-Api-Key": this.conn.key, "content-type": "application/json" },
           body: body ? JSON.stringify(body) : undefined,
+          redirect: "manual", // a redirect could point at an internal host; 3xx is treated as a failure
         }),
         this.timeoutMs,
       );

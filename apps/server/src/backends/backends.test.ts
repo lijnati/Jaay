@@ -129,16 +129,37 @@ describe("NWC enrollment rule (security item 9)", () => {
     expect(nwcInfoAcceptable({ methods: "make_invoice,lookup_invoice", network: "regtest" })).toBe(false);
   });
 
-  const registry = (wallet: FakeNwcWallet, sandbox: boolean, allowMixed = false) =>
+  const registry = (wallet: FakeNwcWallet, sandbox: boolean, allowMixed = false, fetchFn: typeof fetch = fetch) =>
     new Backends({
       sealer: createSealer(MASTER_KEY),
       nwcFactory: wallet.factory,
-      fetch,
+      fetch: fetchFn,
       now: Date.now,
       sandbox: sandbox ? new SandboxBackend(Date.now) : null,
       allowMixed,
+      lnbitsAllowedHosts: ["lnbits.example"],
+      nwcAllowedRelays: ["ws://127.0.0.1:10547"],
       timeoutMs: 200,
     });
+
+  test("anti-SSRF: relays and LNbits hosts off the operator allowlist are refused without any network call", async () => {
+    const w = new FakeNwcWallet();
+    let fetches = 0;
+    const countingFetch = (async () => {
+      fetches++;
+      return Response.json({ name: "w" });
+    }) as typeof fetch;
+    const r = registry(w, false, false, countingFetch);
+    const evilRelay = NWC_URL.replace("ws%3A%2F%2F127.0.0.1%3A10547", "ws%3A%2F%2F10.0.0.5%3A80");
+    expect(await r.acceptable("nwc", evilRelay)).toBe(false);
+    expect(await r.acceptable("nwc", `${NWC_URL}&relay=wss%3A%2F%2Fevil.example`)).toBe(false); // every relay must be allowed
+    expect(await r.acceptable("lnbits", `https://169.254.169.254/?api-key=${"c".repeat(32)}`)).toBe(false);
+    expect(await r.acceptable("lnbits", `http://localhost:5000/?api-key=${"c".repeat(32)}`)).toBe(false);
+    expect(w.clientsCreated).toBe(0);
+    expect(fetches).toBe(0);
+    expect(await r.acceptable("lnbits", `https://lnbits.example/?api-key=${"c".repeat(32)}`)).toBe(true);
+    expect(fetches).toBe(1);
+  });
 
   test("enrollment through a fake NWC client: receive-only accepted, spend-capable rejected", async () => {
     const w = new FakeNwcWallet();

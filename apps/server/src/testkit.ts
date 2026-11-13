@@ -18,6 +18,8 @@ export function testConfig(over: Partial<Config> = {}): Config {
     masterKey: MASTER_KEY,
     ephemeralMasterKey: false,
     trustProxy: false,
+    lnbitsAllowedHosts: [],
+    nwcAllowedRelays: ["ws://127.0.0.1:10547"],
     ...over,
   };
 }

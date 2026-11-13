@@ -13,7 +13,22 @@ export interface BackendDeps {
   /** Present only when the server runs with SANDBOX=1. */
   sandbox: SandboxBackend | null;
   allowMixed: boolean;
+  /** Operator allowlists (anti-SSRF): LNbits host[:port] values and exact NWC relay URLs. */
+  lnbitsAllowedHosts: string[];
+  nwcAllowedRelays: string[];
   timeoutMs?: number;
+}
+
+const normRelay = (r: string) => r.trim().replace(/\/+$/, "").toLowerCase();
+
+/** Every relay named in the connection must be on the allowlist. */
+export function relaysAllowed(connection: string, allowed: string[]): boolean {
+  // Parse only the query: the pubkey "host" is not a valid URL host when it is all digits.
+  const qs = connection.indexOf("?");
+  if (qs < 0) return false;
+  const relays = new URLSearchParams(connection.slice(qs + 1)).getAll("relay");
+  const ok = new Set(allowed.map(normRelay));
+  return relays.length > 0 && relays.every((r) => ok.has(normRelay(r)));
 }
 
 export const connPurpose = (deviceId: string) => `connection:${deviceId}`;
@@ -55,7 +70,7 @@ export class Backends {
     if (sandboxServer && !this.deps.allowMixed) return false;
     try {
       if (kind === "nwc") {
-        if (!looksLikeNwcUrl(connection)) return false;
+        if (!looksLikeNwcUrl(connection) || !relaysAllowed(connection, this.deps.nwcAllowedRelays)) return false;
         const b = new NwcBackend(connection, this.deps.nwcFactory, this.deps.now, this.deps.timeoutMs);
         try {
           await b.check();
@@ -65,7 +80,7 @@ export class Backends {
         return true;
       }
       const conn = parseLnbitsConnection(connection);
-      if (!conn) return false;
+      if (!conn || !this.deps.lnbitsAllowedHosts.includes(new URL(conn.url).host.toLowerCase())) return false;
       await new LnbitsBackend(conn, this.deps.fetch, this.deps.now, this.deps.timeoutMs).check();
       return true;
     } catch {

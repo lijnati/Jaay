@@ -29,7 +29,9 @@ export function createLogger(sink: LogSink = (l) => process.stdout.write(`${l}\n
   const write = (level: string, event: string, fields: Record<string, Field> = {}) => {
     const safe: Record<string, Field> = {};
     for (const [k, v] of Object.entries(fields)) safe[k] = typeof v === "string" ? scrub(v) : v;
-    sink(JSON.stringify({ t: new Date(now()).toISOString(), level, event: scrub(event), ...safe }));
+    // Event names are code literals (snake_case), so they are checked by shape instead of scrubbed.
+    const ev = /^[a-z][a-z0-9_]{0,48}$/.test(event) ? event : "invalid_event";
+    sink(JSON.stringify({ t: new Date(now()).toISOString(), level, event: ev, ...safe }));
   };
   return {
     info: (e, f) => write("info", e, f),

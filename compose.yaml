@@ -1,0 +1,17 @@
+# SANDBOX: fake payments only, no real bitcoin. For a real regtest or signet backend see apps/server/.env.example.
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: jaay-server:sandbox
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+    environment:
+      # Sandbox demo uses an ephemeral master key and in-memory DB so it needs no secrets; data resets on restart.
+      NODE_ENV: development
+      SANDBOX: "1"
+      BASE_URL: http://localhost:8787
+      DB_PATH: ":memory:"
+      PORT: "8787"

@@ -47,6 +47,8 @@ export function buildServer(cfg: Config, edges: Edges = {}) {
     now,
     sandbox,
     allowMixed: cfg.allowMixed,
+    lnbitsAllowedHosts: cfg.lnbitsAllowedHosts,
+    nwcAllowedRelays: cfg.nwcAllowedRelays,
     timeoutMs: edges.backendTimeoutMs,
   });
   const sales = new SaleService({ repo, sealer, fx, backends, sandbox, now, log, baseUrl: cfg.baseUrl, decode: edges.decode });

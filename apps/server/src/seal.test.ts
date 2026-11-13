@@ -78,3 +78,14 @@ describe("master key config", () => {
     expect(loadConfig({ BASE_URL: "https://pay.example.sn/" }).baseUrl).toBe("https://pay.example.sn");
   });
 });
+
+describe("anti-SSRF allowlists in config", () => {
+  test("LNbits is off unless hosts are listed; NWC relays default to Alby's public relays", () => {
+    const c = loadConfig({});
+    expect(c.lnbitsAllowedHosts).toEqual([]);
+    expect(c.nwcAllowedRelays).toEqual(["wss://relay.getalby.com/v1", "wss://relay2.getalby.com/v1"]);
+    const d = loadConfig({ LNBITS_ALLOWED_HOSTS: "LNbits.Example, other.example:5000", NWC_ALLOWED_RELAYS: "ws://127.0.0.1:10547" });
+    expect(d.lnbitsAllowedHosts).toEqual(["lnbits.example", "other.example:5000"]);
+    expect(d.nwcAllowedRelays).toEqual(["ws://127.0.0.1:10547"]);
+  });
+});

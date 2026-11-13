@@ -14,7 +14,16 @@ export interface Config {
   ephemeralMasterKey: boolean;
   /** TRUST_PROXY=1: take the client IP from the first X-Forwarded-For entry (only behind a proxy you run). */
   trustProxy: boolean;
+  /**
+   * Enrollment is open, so the hosts the server will contact on a merchant's behalf are an operator allowlist
+   * (no SSRF to internal services). LNbits: empty means LNbits enrollment is off. NWC: relay URLs.
+   */
+  lnbitsAllowedHosts: string[];
+  nwcAllowedRelays: string[];
 }
+
+export const DEFAULT_NWC_RELAYS = ["wss://relay.getalby.com/v1", "wss://relay2.getalby.com/v1"];
+const list = (v: string | undefined) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 export class ConfigError extends Error {}
 
@@ -57,5 +66,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     masterKey,
     ephemeralMasterKey,
     trustProxy: env.TRUST_PROXY === "1",
+    lnbitsAllowedHosts: list(env.LNBITS_ALLOWED_HOSTS).map((h) => h.toLowerCase()),
+    nwcAllowedRelays: env.NWC_ALLOWED_RELAYS ? list(env.NWC_ALLOWED_RELAYS) : DEFAULT_NWC_RELAYS,
   };
 }
