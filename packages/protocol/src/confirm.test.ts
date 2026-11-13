@@ -53,7 +53,7 @@ describe("deriveConfirmCode", () => {
       const chi = row.reduce((s, c) => s + (c - 2000) ** 2 / 2000, 0);
       expect(chi).toBeLessThan(40);
     }
-  });
+  }, 30_000); // 20,000 sequential HMACs take about 10 s on a loaded machine
 
   test.each(["", "short", "A".repeat(12), "AAAAAAAAAA+"])(
     "rejects sid %j",
