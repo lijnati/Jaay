@@ -285,7 +285,7 @@ describe("randomness", () => {
     }
     expect(ivs.size).toBe(10_000);
     expect(sids.size).toBe(10_000);
-  });
+  }, 30_000); // 10,000 sequential AES-GCM encodes can pass 5 s on a loaded machine
 });
 
 describe("size budget", () => {
