@@ -1,0 +1,153 @@
+// Test helpers (not part of the bundle). Deterministic clock, fake FX fetch, fake NWC client, log capture.
+import { deriveKeys, encodeSale, secretFromString, type DeviceKeys } from "@jaay/protocol";
+import type { Config } from "./config";
+import type { NwcClientLike } from "./backends/nwc";
+import { buildServer, type Edges } from "./index";
+
+export const T0 = Date.UTC(2026, 10, 14, 9, 0, 0);
+export const MASTER_KEY = new Uint8Array(32).map((_, i) => i + 1);
+
+export function testConfig(over: Partial<Config> = {}): Config {
+  return {
+    port: 8787,
+    baseUrl: "http://localhost:8787",
+    dbPath: ":memory:",
+    production: false,
+    sandbox: true,
+    allowMixed: false,
+    masterKey: MASTER_KEY,
+    ephemeralMasterKey: false,
+    trustProxy: false,
+    ...over,
+  };
+}
+
+export class Clock {
+  t = T0;
+  now = () => this.t;
+  advance(ms: number) {
+    this.t += ms;
+  }
+}
+
+/** Fake exchange APIs. Set a rate string to null to make that source fail. */
+export class FakeFx {
+  kraken: string | null = "62347.80000";
+  coinbase: string | null = "62350.00";
+  calls = 0;
+  fetch = (async (input: string | URL | Request) => {
+    this.calls++;
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("kraken")) {
+      if (this.kraken === null) return new Response("down", { status: 503 });
+      return Response.json({ error: [], result: { XXBTZEUR: { c: [this.kraken, "0.1"] } } });
+    }
+    if (url.includes("coinbase")) {
+      if (this.coinbase === null) return new Response("down", { status: 503 });
+      return Response.json({ price: this.coinbase });
+    }
+    return new Response("unexpected", { status: 500 });
+  }) as typeof fetch;
+}
+
+export const ALBY_HUB_METHODS = ["get_info", "make_invoice", "make_hold_invoice", "settle_hold_invoice", "cancel_hold_invoice", "lookup_invoice", "get_budget"];
+
+/** In-memory NWC wallet. `mode` simulates relay trouble: "down" rejects like a lost relay, "hang" never answers. */
+export class FakeNwcWallet {
+  methods = [...ALBY_HUB_METHODS];
+  network = "regtest";
+  mode: "ok" | "down" | "hang" = "ok";
+  clientsCreated = 0;
+  invoices = new Map<string, { invoice: string; settled: boolean; descriptionHash: string; amount: number; expiry: number }>();
+  /** Extra text a misbehaving library might put in errors and console output (used by the log-scrubber test). */
+  leak = "";
+  private n = 0;
+
+  factory = (url: string): NwcClientLike => {
+    this.clientsCreated++;
+    let closed = false;
+    const gate = async () => {
+      if (closed || this.mode === "down") {
+        console.error("failed to connect to any relay", new Error(`relay down ${url} ${this.leak}`));
+        const e = new Error(`Failed to connect ${url} ${this.leak}`);
+        Object.defineProperty(e, "constructor", { value: { name: "Nip47NetworkError" } });
+        throw e;
+      }
+      if (this.mode === "hang") await new Promise(() => {});
+    };
+    return {
+      getInfo: async () => {
+        await gate();
+        return { methods: this.methods, network: this.network };
+      },
+      makeInvoice: async (r) => {
+        await gate();
+        const hash = (++this.n).toString(16).padStart(64, "0");
+        const invoice = `lnbcrt${Math.floor(r.amount / 1000)}0n1fakeinvoice${hash}${this.leak ? "x" : ""}`;
+        this.invoices.set(hash, { invoice, settled: false, descriptionHash: r.description_hash, amount: r.amount, expiry: r.expiry });
+        return { invoice, payment_hash: hash };
+      },
+      lookupInvoice: async (r) => {
+        await gate();
+        const inv = this.invoices.get(r.payment_hash);
+        return inv?.settled ? { state: "settled", settled_at: 1 } : { state: "pending" };
+      },
+      close: () => {
+        closed = true;
+      },
+    };
+  };
+
+  settleAll() {
+    for (const v of this.invoices.values()) v.settled = true;
+  }
+}
+
+export function makeServer(opts: { cfg?: Partial<Config>; edges?: Edges } = {}) {
+  const clock = new Clock();
+  const fx = new FakeFx();
+  const logs: string[] = [];
+  const nwc = new FakeNwcWallet();
+  const s = buildServer(testConfig(opts.cfg), {
+    fetch: fx.fetch,
+    now: clock.now,
+    nwcFactory: nwc.factory,
+    logSink: (l) => logs.push(l),
+    clientIp: (c) => c.req.header("x-test-ip") ?? "203.0.113.1",
+    backendTimeoutMs: 200,
+    ...opts.edges,
+  });
+  const req = async (path: string, init: RequestInit & { ip?: string } = {}): Promise<Response> => {
+    const headers = new Headers(init.headers);
+    if (init.ip) headers.set("x-test-ip", init.ip);
+    return s.app.request(path, { ...init, headers });
+  };
+  return { ...s, clock, fxApi: fx, logs, nwc, req };
+}
+
+export interface Device {
+  deviceId: string;
+  secret: string;
+  keys: DeviceKeys;
+}
+
+export async function enroll(
+  srv: ReturnType<typeof makeServer>,
+  body: Partial<{ label: string; backend: string; connection: string; minXof: number; maxXof: number }> = {},
+): Promise<Device> {
+  const res = await srv.req("/api/enroll", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ label: "Boutique Test", backend: "sandbox", connection: "", minXof: 50, maxXof: 5_000_000, ...body }),
+  });
+  if (res.status !== 200) throw new Error(`enroll failed ${res.status}`);
+  const j = (await res.json()) as { deviceId: string; deviceSecretB64u: string };
+  return { deviceId: j.deviceId, secret: j.deviceSecretB64u, keys: await deriveKeys(secretFromString(j.deviceSecretB64u)) };
+}
+
+/** Device side: what the merchant PWA does offline. Uses the real protocol. */
+export async function sell(dev: Device, amountXof: number) {
+  return encodeSale(dev.keys, dev.deviceId, { amountXof }, { minAmountXof: 1, maxAmountXof: 0xffffffff });
+}
+
+export const q = (token: string) => encodeURIComponent(token);
