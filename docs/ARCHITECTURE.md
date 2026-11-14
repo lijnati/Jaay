@@ -191,7 +191,16 @@ Every LNURL verification failure (bad or tampered token, unknown device, amount 
 - Receive-only is enforced by the wallet service, not by Jaay. The claim is "the Jaay server cannot spend", not "the merchant's node cannot be drained": anyone with the wallet's own admin access can still spend.
 - FX source terms of use and exact rate limits were not verified (S4).
 - The rate limiter and the per-sale lock are in memory: they reset on restart and assume a single server instance.
-- The server trusts the wallet to honor the requested amount and description hash; it checks the network prefix and payment hash shape of the returned invoice but does not decode the BOLT11.
-- Enrollment has no operator authentication: anyone can enroll a device that pays into their own wallet. Abuse is bounded by the enroll rate limit and the allowlists.
+- Invoice signatures are not verified (decode only); the amount, network, payment hash, description hash and expiry are (A5).
+- Sandbox enrollment is open (rate limited); real backends need the operator token (A4).
 - With a real relay, recovery after a relay restart also depends on the wallet service re-subscribing. In the regtest run, Alby Hub v1.24.6 did not re-subscribe within about 4 minutes after the local in-memory relay restarted (see the M2 Log row).
-- `POST /v1/sales/reconcile` from the roadmap is not built yet (it was not in the M2 endpoint list given for this session).
+- Device authentication relies on the device auth key; whoever holds the unlocked phone (or injects script into the PWA origin) can sign requests as that device. The nonce table lives in SQLite; the rate limiter is per process.
+
+### Device API (M3 Block A)
+
+The PWA signs calls with the device auth key: HMAC-SHA256 over `jaay-auth-v1`, method, path, device id, a millisecond timestamp (within 120 s of server time), a 128-bit nonce and sha256 of the body (full format in [API.md](API.md#device-authentication)). Unknown devices run the same HMAC with decoy keys, comparison uses `timingSafeEqual`, and a nonce is stored (SQLite, expiring with the window) only after the MAC passes, so nobody can burn a device's nonces. Two endpoints use it:
+
+- `POST /v1/sales/reconcile`: up to 200 sids, each answered from the signing device's rows only (`unknown` otherwise), with server amount, server settlement time and a mismatch flag. A due settlement check runs first.
+- `POST /v1/wallet/summary`: server-computed paid totals, the last 50 paid sales, and the backend's granted methods checked for spend capability on every call (if one appears after enrollment, `receiveOnly` turns false and an error is logged). The balance appears only when NWC grants `get_balance`.
+
+Other Block A changes: non-sandbox enrollment needs `JAAY_ENROLL_TOKEN` as a Bearer token; every returned invoice is decoded and checked (network `JAAY_NETWORK`, amount, payment hash, description hash, not expired) before it reaches a wallet; and the PWA build is served at `/app/` with a self-only CSP when `JAAY_POS_DIR` is set.
