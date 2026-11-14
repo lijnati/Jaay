@@ -256,3 +256,29 @@ The enrollment secret is turned into three non-extractable CryptoKeys (`deriveKe
 ### Offline and updates
 
 The service worker precaches the shell and serves it cache-first; requests outside `/app/` (device API, `/lnurlp`, `/r/`) always go to the network. A new version installs in the background and waits; Settings offers "Update now" only when no sale is open on screen, then the page reloads once into the new version. Verified in Chromium by the e2e run: offline reload, cold start with the browser closed and reopened offline, and the update flow with an open sale.
+
+## Demo path (M4)
+
+Everything in this section exists only on a SANDBOX server (`SANDBOX=1`) and is labeled SANDBOX wherever it shows.
+
+### Fixed demo rate
+
+`JAAY_FX_FIXED_XOF_PER_BTC` replaces the exchange feeds with one integer rate. The server refuses to start if it is set without `SANDBOX=1`. No exchange is called. The quote math is the same bigint round up to a whole sat (`sats = ceil(amountXof * 1e8 / rate)`), the 120 s lock is unchanged, and the quote is stored with source `fixed-demo`. It is labeled "fixed demo rate" in `/healthz`, in the LNURL metadata text the wallet shows, and on the receipt next to the sats. `pnpm demo`, `compose.yaml` and the e2e suite use 40 000 000 XOF per BTC, so none of them needs the internet.
+
+### Customer simulator (`apps/customer-sim`, served at `/sim/`)
+
+A page that plays an LNURL-pay wallet, always labeled "SANDBOX customer wallet (simulator, not a real wallet)". It decodes the LNURL with the protocol's LUD-01 function (https, or http on localhost only), fetches the payRequest and checks it (min equals max, non-empty text/plain), calls the callback with that exact amount, decodes the invoice and checks its description hash against the metadata, then calls `POST /sandbox/pay/<payment hash>`. It holds no secret: paying by payment hash means it never needs the sale id. The success action is shown the way Phoenix does: a link only if it is on the callback's host, otherwise text only, plus the receipt URL printed in the description. Nothing opens automatically. A "what a wallet sees" panel shows the raw responses. LNURL errors show their reason and nothing else. 10.6 KB gzipped, same CSP as the PWA.
+
+### Sandbox helpers in the merchant PWA
+
+- **Try the sandbox demo shop** (Enroll screen, only when `/healthz` says sandbox): calls the open sandbox enrollment and feeds the answer into the normal enrollment path: the same strict parser, the same host confirmation, the same non-extractable key derivation. The secret is never put in the visible text box.
+- **Copy payment string** and **Open customer simulator** under the QR: decided by `sandboxHelpers(config, qr)`, which returns null unless the device config says sandbox (unit tested).
+- **Load demo data / Remove demo data** (Settings, sandbox only): 12 deterministic sales over the last 3 days (500 to 25 000 F, three sample merchant types), flagged `demo`. The server is seeded first through `POST /sandbox/seed` (device-signed, sandbox only, at most 50 sales, paid within the last 30 days, idempotent per sid, marked demo), then the local ledger. `POST /sandbox/unseed` and the local delete remove only demo rows. Wallet totals and reconcile therefore agree with the ledger (checked by the e2e judge flow).
+
+### Receipt page
+
+Shows the merchant label (HTML-escaped; tested with script tags and quotes), the amount in XOF and sats, the settlement time, the fixed demo rate note when used, and the SANDBOX banner. Still under 15 KB, no JavaScript, and the code appears only after settlement.
+
+### One command and smoke test
+
+`pnpm demo` (scripts/demo.mjs) builds what is missing, generates `.demo/master.key` once, starts `apps/server/dist/server.mjs` with SANDBOX, the fixed rate, `JAAY_POS_DIR` and `JAAY_SIM_DIR`, and prints the three URLs. `pnpm smoke [baseUrl]` (scripts/smoke.mjs) checks `/app/`, `/sim/` and `/healthz`, then runs the existing golden path script (`apps/server/scripts/golden.ts`) over HTTP, for local, Docker or a deployed sandbox URL. Deployment: [DEPLOY.md](DEPLOY.md).

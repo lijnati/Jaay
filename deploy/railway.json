@@ -1,0 +1,10 @@
+{
+  "build": {
+    "buildCommand": "corepack enable && pnpm install --frozen-lockfile --production=false && pnpm build"
+  },
+  "deploy": {
+    "startCommand": "node apps/server/dist/server.mjs",
+    "healthcheckPath": "/healthz",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

@@ -180,11 +180,11 @@ Responses:
 
 `late` is `true` when the payment arrived after the invoice expired (`paid_late`). `code` is only present when paid.
 
-## POST /sandbox/pay/:sid
+## POST /sandbox/pay/:ref
 
 SANDBOX only. Not registered unless `SANDBOX=1`. Marks the fake invoice of an invoiced sandbox sale as paid. No real bitcoin. No body.
 
-`:sid` is the sale id returned by the device encoder.
+`:ref` is either the sale id (11 base64url chars) or the invoice's payment hash (64 hex chars). The customer simulator uses the payment hash, which it reads from the invoice, so it never needs the sale id or any secret.
 
 Responses:
 
@@ -270,6 +270,21 @@ Every invoice a backend returns is decoded (light-bolt11-decoder) before it reac
 ## /app/ (merchant PWA)
 
 When `JAAY_POS_DIR` is set, the PWA build is served at `/app/` on the same origin as the API. `/app` redirects to `/app/`. Responses carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`. `sw.js` and the shell are `Cache-Control: no-cache`; files under `/app/assets/` are immutable. Paths without an extension fall back to `index.html`. The service worker scope is `/app/`, so `/lnurlp`, `/lnurlp/cb` and `/r/` are never intercepted.
+
+## POST /sandbox/seed and POST /sandbox/unseed
+
+SANDBOX only, device authenticated (see Device authentication). Demo data for the signing device.
+
+- `/sandbox/seed` body: `{"sales":[{"sid":"<11-char base64url>","amountXof":1500,"paidAt":1794600000000}]}`, at most 50 entries, `paidAt` in server time within the last 30 days and not in the future. Creates paid sales marked demo, quoted at the current (fixed demo) rate. Idempotent per sid. Response `200 {"sandbox":true,"created":12,"existing":0}`; a malformed batch gets `400 {"error":"bad request"}`.
+- `/sandbox/unseed` body `{}`: removes this device's demo sales only. Response `200 {"sandbox":true,"removed":12}`.
+
+## Fixed demo rate
+
+With `SANDBOX=1` and `JAAY_FX_FIXED_XOF_PER_BTC` set, `/healthz` reports `"fx":"fixed demo rate"`, the LNURL metadata text includes "Taux de demo fixe / fixed demo rate", and the receipt prints the sats with "fixed demo rate, not a market rate". The server refuses to start with the fixed rate outside SANDBOX.
+
+## /sim/ (customer simulator)
+
+When `JAAY_SIM_DIR` is set, the SANDBOX customer simulator is served at `/sim/` with the same CSP and caching rules as `/app/`. `/sim/?lnurl=<payment string>` fills the input and reads the payment request; paying always needs a tap.
 
 ## Sale statuses
 

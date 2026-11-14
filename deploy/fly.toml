@@ -1,0 +1,40 @@
+# Draft Fly.io config for the public SANDBOX demo. NOT RUN, not deployed yet.
+# Run from the repo root: fly deploy --config deploy/fly.toml --dockerfile apps/server/Dockerfile
+# Secret (never put it in this file): fly secrets set JAAY_MASTER_KEY=<base64 of 32 random bytes>
+# Volume (create once): fly volumes create jaay_data --size 1 --region cdg
+
+# Placeholder name. Change it, and change JAAY_BASE_URL below to match.
+app = "jaay-demo"
+
+# Paris is close to Dakar. Change as needed.
+primary_region = "cdg"
+
+[build]
+  # Relative to the working directory where fly deploy runs (the repo root).
+  # [UNKNOWN: exact resolution rule; test it.]
+  dockerfile = "apps/server/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  SANDBOX = "1"
+  JAAY_FX_FIXED_XOF_PER_BTC = "40000000"
+  PORT = "8080"
+  DB_PATH = "/data/jaay.sqlite"
+  JAAY_BASE_URL = "https://jaay-demo.fly.dev"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    path = "/healthz"
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
+
+[mounts]
+  source = "jaay_data"
+  destination = "/data"
