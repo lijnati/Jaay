@@ -29,6 +29,10 @@ export interface Config {
   network: Network;
   /** A6: JAAY_POS_DIR, the apps/pos build output served at /app/; null disables it. */
   posDir: string | null;
+  /** JAAY_SIM_DIR: the customer simulator build served at /sim/; null disables it. */
+  simDir: string | null;
+  /** JAAY_FX_FIXED_XOF_PER_BTC: a fixed demo rate, allowed only with SANDBOX=1, labeled everywhere. */
+  fxFixedXofPerBtc: bigint | null;
 }
 
 export const DEFAULT_NWC_RELAYS = ["wss://relay.getalby.com/v1", "wss://relay2.getalby.com/v1"];
@@ -76,6 +80,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const network = (env.JAAY_NETWORK ?? "regtest") as Network;
   if (!["regtest", "signet", "testnet"].includes(network)) throw new ConfigError("JAAY_NETWORK must be regtest, signet or testnet");
 
+  const simDir = env.JAAY_SIM_DIR || null;
+  if (simDir && !existsSync(join(simDir, "index.html"))) throw new ConfigError("JAAY_SIM_DIR must contain index.html");
+  const fixedText = env.JAAY_FX_FIXED_XOF_PER_BTC || null;
+  if (fixedText !== null && !sandbox) throw new ConfigError("JAAY_FX_FIXED_XOF_PER_BTC is allowed only with SANDBOX=1");
+  if (fixedText !== null && !/^[1-9]\d{3,12}$/.test(fixedText)) throw new ConfigError("JAAY_FX_FIXED_XOF_PER_BTC must be a positive integer");
   const posDir = env.JAAY_POS_DIR || null;
   if (posDir && !existsSync(join(posDir, "index.html"))) throw new ConfigError("JAAY_POS_DIR must contain index.html");
 
@@ -94,5 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     enrollToken,
     network,
     posDir,
+    simDir,
+    fxFixedXofPerBtc: fixedText === null ? null : BigInt(fixedText),
   };
 }

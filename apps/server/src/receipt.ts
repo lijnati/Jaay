@@ -21,6 +21,8 @@ const T = {
   fr: {
     title: "Recu",
     pending: "Pas encore paye",
+    fixed: "taux de demo fixe, pas un taux de marche",
+    merchant: "Marchand",
     pendingHint: "Cette page se met a jour toute seule.",
     generic: "Recu introuvable ou expire",
     paid: "Paye",
@@ -31,6 +33,8 @@ const T = {
   en: {
     title: "Receipt",
     pending: "Not paid yet",
+    fixed: "fixed demo rate, not a market rate",
+    merchant: "Merchant",
     pendingHint: "This page refreshes by itself.",
     generic: "Receipt not found or expired",
     paid: "Paid",
@@ -40,6 +44,9 @@ const T = {
   },
 } as const;
 
+/** Every interpolated value that did not come from this file goes through esc(). */
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const fmtSats = (msat: string) => `${String(BigInt(msat) / 1000n).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} sats`;
 const fmtXof = (n: number) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} XOF`;
 const fmtTime = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 
@@ -49,12 +56,14 @@ export function renderReceipt(view: ReceiptView, lang: Lang, sandbox: boolean): 
   let refresh = "";
   if (view.kind === "paid") {
     body =
+      `<p class="muted">${t.merchant}: ${esc(view.label)}</p>` +
       `<p class="${view.late ? "late" : "ok"}">${view.late ? t.late : t.paid}</p>` +
-      `<p class="amt">${fmtXof(view.amountXof)}</p><p class="muted">${fmtTime(view.paidAt)}</p>` +
-      `<p class="muted">${t.code}</p><p class="code">${view.code}</p>`;
+      `<p class="amt">${fmtXof(view.amountXof)}</p><p class="muted">${fmtSats(view.msat)}${view.fixedRate ? ` (${t.fixed})` : ""}</p>` +
+      `<p class="muted">${fmtTime(view.paidAt)}</p>` +
+      `<p class="muted">${t.code}</p><p class="code">${esc(view.code)}</p>`;
   } else if (view.kind === "pending") {
     refresh = '<meta http-equiv="refresh" content="5">';
-    body = `<p class="amt">${t.pending}</p><p class="muted">${t.pendingHint}</p>`;
+    body = `<p class="muted">${t.merchant}: ${esc(view.label)}</p><p class="amt">${t.pending}</p><p class="muted">${t.pendingHint}</p>`;
   } else {
     body = `<p>${t.generic}</p>`;
   }

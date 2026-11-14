@@ -38,7 +38,7 @@ export function buildServer(cfg: Config, edges: Edges = {}) {
   const log = createLogger(edges.logSink, now);
   const repo = new SqliteRepo(cfg.dbPath);
   const sealer = createSealer(cfg.masterKey);
-  const fx = new FxService({ fetch: fetchFn, now, log });
+  const fx = new FxService({ fetch: fetchFn, now, log, fixedXofPerBtc: cfg.fxFixedXofPerBtc });
   const sandbox = cfg.sandbox ? new SandboxBackend(now, cfg.network) : null;
   const backends = new Backends({
     sealer,
@@ -65,6 +65,7 @@ export function buildServer(cfg: Config, edges: Edges = {}) {
     sandbox: cfg.sandbox,
     enrollToken: cfg.enrollToken,
     posDir: cfg.posDir,
+    simDir: cfg.simDir,
     clientIp: edges.clientIp ?? (() => "unknown"),
     limits: edges.limits,
   });

@@ -19,13 +19,14 @@ const TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-export function servePos(app: Hono, dir: string): void {
+/** Serves a static build at `/<prefix>/` (the PWA at /app/, the customer simulator at /sim/). */
+export function servePos(app: Hono, dir: string, prefix = "app"): void {
   const root = resolve(dir);
-  app.get("/app", (c) => c.redirect("/app/", 301));
-  app.get("/app/*", async (c) => {
+  app.get(`/${prefix}`, (c) => c.redirect(`/${prefix}/`, 301));
+  app.get(`/${prefix}/*`, async (c) => {
     let rel: string;
     try {
-      rel = decodeURIComponent(c.req.path.slice("/app/".length));
+      rel = decodeURIComponent(c.req.path.slice(prefix.length + 2));
     } catch {
       return c.text("not found", 404);
     }

@@ -31,6 +31,7 @@ export interface AppDeps {
   sandbox: boolean;
   enrollToken: string | null;
   posDir: string | null;
+  simDir: string | null;
   /** Client IP for rate limiting. Defaults to the socket address (see main.ts). */
   clientIp: (c: Context) => string;
   limits?: Partial<Record<Bucket, [number, number]>>;
@@ -47,6 +48,22 @@ const DEFAULT_LIMITS: Record<Bucket, [number, number]> = {
 };
 const MAX_RECONCILE = 200;
 const SID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+/** Demo seed batch: at most 50 paid sales from the last 30 days, none in the future (server time). */
+export function parseSeed(body: unknown, now: number): { sid: string; amountXof: number; paidAt: number }[] | null {
+  const sales = (body as { sales?: unknown } | null)?.sales;
+  if (!Array.isArray(sales) || sales.length > 50) return null;
+  const out = [];
+  for (const e of sales as Record<string, unknown>[]) {
+    if (typeof e !== "object" || e === null) return null;
+    const { sid, amountXof, paidAt } = e;
+    if (typeof sid !== "string" || !SID_RE.test(sid)) return null;
+    if (!Number.isSafeInteger(amountXof) || (amountXof as number) < 1 || (amountXof as number) > 0xffffffff) return null;
+    if (!Number.isSafeInteger(paidAt) || (paidAt as number) > now || (paidAt as number) < now - 30 * 86_400_000) return null;
+    out.push({ sid, amountXof: amountXof as number, paidAt: paidAt as number });
+  }
+  return out;
+}
 
 /** Strict shape check for a reconcile batch; null when anything is off. */
 export function parseReconcile(body: unknown): ReconcileEntry[] | null {
@@ -234,14 +251,32 @@ export function createApp(d: AppDeps) {
 
   // ---------- SANDBOX only ----------
   if (d.sandbox) {
-    app.post("/sandbox/pay/:sid", async (c) => {
+    app.post("/sandbox/pay/:ref", async (c) => {
       if (!allowed(c, "sandbox")) return c.json({ sandbox: true, status: "ERROR" }, 429);
-      const ok = await d.sales.sandboxPay(c.req.param("sid"));
+      const ok = await d.sales.sandboxPay(c.req.param("ref"));
       return c.json({ sandbox: true, status: ok ? "paid" : "ERROR" }, ok ? 200 : 404);
+    });
+
+    // Demo data for this device only (device-authenticated), removable in one call.
+    app.post("/sandbox/seed", deviceLimit, async (c) => {
+      if (!allowed(c, "sandbox")) return c.json({ sandbox: true, error: "too many requests" }, 429);
+      const r = await deviceRequest(c);
+      if (!r) return unauthorized(c);
+      const entries = parseSeed(r.json, d.now());
+      if (!entries) return badRequest(c);
+      const out = d.sales.seedDemo(r.device, entries);
+      return out ? c.json({ sandbox: true, ...out }) : badRequest(c);
+    });
+    app.post("/sandbox/unseed", deviceLimit, async (c) => {
+      if (!allowed(c, "sandbox")) return c.json({ sandbox: true, error: "too many requests" }, 429);
+      const r = await deviceRequest(c);
+      if (!r) return unauthorized(c);
+      return c.json({ sandbox: true, removed: d.repo.deleteDemo(r.device.id) });
     });
   }
 
   if (d.posDir) servePos(app, d.posDir);
+  if (d.simDir) servePos(app, d.simDir, "sim");
 
   app.notFound((c) => c.json({ error: "not found", ...sb }, 404));
   app.onError((e, c) => {

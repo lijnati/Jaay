@@ -35,6 +35,8 @@ export interface SaleRow {
   paidAt: number | null;
   nextCheckAt: number | null;
   checkFailures: number;
+  /** 1 for SANDBOX demo data created by /sandbox/seed. */
+  demo: number;
 }
 
 export interface Repo {
@@ -48,6 +50,9 @@ export interface Repo {
   updateSale(deviceId: string, sid: string, from: SaleStatus, patch: Partial<SaleRow>): boolean;
   /** Sales whose invoice still needs a settlement check. */
   dueChecks(now: number, expiredSince: number, limit: number): SaleRow[];
+  getSaleByPaymentHash(hash: string): SaleRow | undefined;
+  /** SANDBOX demo data of one device; returns how many rows were removed. */
+  deleteDemo(deviceId: string): number;
   /** Settled sales of one device, newest first. */
   paidSales(deviceId: string): SaleRow[];
   /** Records a request nonce; false if this device already used it (replay). Expired nonces are purged. */
@@ -75,6 +80,7 @@ const SALE_COLS: Record<keyof SaleRow, string> = {
   paidAt: "paid_at",
   nextCheckAt: "next_check_at",
   checkFailures: "check_failures",
+  demo: "demo",
 };
 const BIGINT_FIELDS = new Set<keyof SaleRow>(["quoteMsat", "quoteRateMicro"]);
 
@@ -110,7 +116,7 @@ export class SqliteRepo implements Repo {
         quote_msat TEXT, quote_rate_micro TEXT, quote_source TEXT, quote_fetched_at INTEGER,
         quoted_at INTEGER, quote_expires_at INTEGER,
         invoice TEXT, payment_hash TEXT, invoice_expires_at INTEGER, paid_at INTEGER,
-        next_check_at INTEGER, check_failures INTEGER NOT NULL DEFAULT 0,
+        next_check_at INTEGER, check_failures INTEGER NOT NULL DEFAULT 0, demo INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (device_id, sid)
       );
       CREATE INDEX IF NOT EXISTS sales_due ON sales (status, next_check_at);
@@ -186,6 +192,20 @@ export class SqliteRepo implements Repo {
       )
       .all(now, expiredSince, limit)
       .map(rowToSale);
+  }
+
+  getSaleByPaymentHash(hash: string) {
+    const r = this.db.prepare("SELECT * FROM sales WHERE payment_hash = ?").get(hash);
+    return r ? rowToSale(r) : undefined;
+  }
+
+  deleteDemo(deviceId: string): number {
+    return Number(this.db.prepare("DELETE FROM sales WHERE device_id = ? AND demo = 1").run(deviceId).changes);
+  }
+
+  /** Tests only: change a device label directly in the database. */
+  renameDevice(id: string, label: string): void {
+    this.db.prepare("UPDATE devices SET label = ? WHERE id = ?").run(label, id);
   }
 
   paidSales(deviceId: string) {

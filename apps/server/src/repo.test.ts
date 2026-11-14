@@ -22,6 +22,7 @@ const sale = (over: Partial<SaleRow> = {}): SaleRow => ({
   paidAt: null,
   nextCheckAt: null,
   checkFailures: 0,
+  demo: 0,
   ...over,
 });
 

@@ -20,5 +20,7 @@ export function testConfigFromEnv(port: number): Config {
     enrollToken: REGTEST_ENROLL_TOKEN,
     network: "regtest",
     posDir: null,
+    simDir: null,
+    fxFixedXofPerBtc: null,
   };
 }

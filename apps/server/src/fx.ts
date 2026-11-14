@@ -12,7 +12,7 @@ const DIVERGENCE_DIVISOR = 50n;
 const MIN_RATE_MICRO = 1_000n * 1_000_000n;
 const MAX_RATE_MICRO = 10_000_000n * 1_000_000n;
 
-export type FxSource = "kraken" | "coinbase";
+export type FxSource = "kraken" | "coinbase" | "fixed-demo";
 export interface Rate {
   eurPerBtcMicro: bigint;
   source: FxSource;
@@ -44,6 +44,14 @@ export function msatForXof(amountXof: number, eurPerBtcMicro: bigint): bigint {
   return sats * 1000n;
 }
 
+/** Same rounding with an XOF-per-BTC rate (the SANDBOX fixed demo rate): sats = ceil(amountXof * 1e8 / rate). */
+export function msatForXofAtXofRate(amountXof: number, xofPerBtc: bigint): bigint {
+  if (!Number.isSafeInteger(amountXof) || amountXof <= 0) throw new RangeError("amount");
+  if (xofPerBtc <= 0n) throw new RangeError("rate");
+  const num = BigInt(amountXof) * 100_000_000n;
+  return ((num + xofPerBtc - 1n) / xofPerBtc) * 1000n;
+}
+
 export function diverges(a: bigint, b: bigint): boolean {
   const lo = a < b ? a : b;
   const diff = a > b ? a - b : b - a;
@@ -55,6 +63,8 @@ export interface FxDeps {
   now: () => number;
   log: Logger;
   timeoutMs?: number;
+  /** SANDBOX only (enforced in config): a fixed XOF per BTC rate; no exchange is ever called. */
+  fixedXofPerBtc?: bigint | null;
 }
 
 export class FxService {
@@ -100,6 +110,7 @@ export class FxService {
 
   /** One poll: both sources in parallel. Primary Kraken, fallback Coinbase, refuse on divergence. */
   async poll(): Promise<void> {
+    if (this.deps.fixedXofPerBtc) return;
     const [k, c] = await Promise.all([this.attempt("kraken", () => this.kraken()), this.attempt("coinbase", () => this.coinbase())]);
     const now = this.deps.now();
     if (k !== null && c !== null && diverges(k, c)) {
@@ -115,12 +126,16 @@ export class FxService {
 
   /** Usable rate, or null when divergent, never fetched, or older than 10 minutes. */
   current(): Rate | null {
+    const fixed = this.deps.fixedXofPerBtc;
+    // Recorded as micro-EUR for the quote row: fixed XOF per BTC divided by the peg.
+    if (fixed) return { eurPerBtcMicro: (fixed * 1_000_000_000n) / XOF_PER_EUR_MILLI, source: "fixed-demo", fetchedAt: this.deps.now() };
     if (this.divergent || !this.last) return null;
     if (this.deps.now() - this.last.fetchedAt > STALE_MS) return null;
     return this.last;
   }
 
-  status(): "ok" | "unavailable" {
+  status(): "ok" | "unavailable" | "fixed demo rate" {
+    if (this.deps.fixedXofPerBtc) return "fixed demo rate";
     return this.current() ? "ok" : "unavailable";
   }
 
@@ -128,10 +143,13 @@ export class FxService {
     const r = this.current();
     if (!r) return null;
     const now = this.deps.now();
-    return { ...r, msat: msatForXof(amountXof, r.eurPerBtcMicro), quotedAt: now, expiresAt: now + QUOTE_LOCK_MS };
+    const fixed = this.deps.fixedXofPerBtc;
+    const msat = fixed ? msatForXofAtXofRate(amountXof, fixed) : msatForXof(amountXof, r.eurPerBtcMicro);
+    return { ...r, msat, quotedAt: now, expiresAt: now + QUOTE_LOCK_MS };
   }
 
   start(): void {
+    if (this.deps.fixedXofPerBtc) return;
     void this.poll();
     this.timer = setInterval(() => void this.poll(), POLL_MS);
     this.timer.unref();

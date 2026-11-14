@@ -26,6 +26,8 @@ export function testConfig(over: Partial<Config> = {}): Config {
     enrollToken: ENROLL_TOKEN,
     network: "regtest",
     posDir: null,
+    simDir: null,
+    fxFixedXofPerBtc: null,
     ...over,
   };
 }

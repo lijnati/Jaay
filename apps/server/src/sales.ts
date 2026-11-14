@@ -58,8 +58,8 @@ export interface CallbackResponse {
 }
 export type ReceiptView =
   | { kind: "generic" }
-  | { kind: "pending" }
-  | { kind: "paid"; amountXof: number; paidAt: number; code: string; late: boolean };
+  | { kind: "pending"; label: string }
+  | { kind: "paid"; amountXof: number; paidAt: number; code: string; late: boolean; label: string; msat: string; fixedRate: boolean };
 
 export interface ReconcileEntry {
   sid: string;
@@ -155,7 +155,8 @@ export class SaleService {
   /** LUD-06 metadata. The text/plain entry is never empty and carries the receipt URL (S5 fallback). */
   metadata(row: SaleRow, device: DeviceRow): string {
     const tag = device.backend === "sandbox" ? "[SANDBOX] " : "";
-    return JSON.stringify([["text/plain", `${tag}Jaay: ${row.amountXof} XOF. Recu / receipt: ${this.receiptUrl(row)}`]]);
+    const rate = row.quoteSource === "fixed-demo" ? " Taux de demo fixe / fixed demo rate." : "";
+    return JSON.stringify([["text/plain", `${tag}Jaay: ${row.amountXof} XOF.${rate} Recu / receipt: ${this.receiptUrl(row)}`]]);
   }
 
   private payRequest(token: string, row: SaleRow, device: DeviceRow): PayRequest {
@@ -201,6 +202,7 @@ export class SaleService {
       paidAt: null,
       nextCheckAt: null,
       checkFailures: 0,
+      demo: 0,
     };
   }
 
@@ -326,13 +328,22 @@ export class SaleService {
     let row = this.d.repo.getSaleByReceiptHash(receiptHash(rt));
     if (!row) return { kind: "generic" };
     if (row.status === "invoiced" && row.nextCheckAt !== null && this.d.now() >= row.nextCheckAt) row = await this.check(row);
+    const device = this.d.repo.getDevice(row.deviceId)!;
     if (row.status === "paid" || row.status === "paid_late") {
-      const device = this.d.repo.getDevice(row.deviceId)!;
       const code = await deriveConfirmCode(await this.keys(device), row.sid);
-      return { kind: "paid", amountXof: row.amountXof, paidAt: row.paidAt!, code, late: row.status === "paid_late" };
+      return {
+        kind: "paid",
+        amountXof: row.amountXof,
+        paidAt: row.paidAt!,
+        code,
+        late: row.status === "paid_late",
+        label: device.label,
+        msat: String(row.quoteMsat ?? 0n),
+        fixedRate: row.quoteSource === "fixed-demo",
+      };
     }
     if (row.status === "expired") return { kind: "generic" };
-    return { kind: "pending" };
+    return { kind: "pending", label: device.label };
   }
 
   /**
@@ -359,6 +370,39 @@ export class SaleService {
       });
     }
     return out;
+  }
+
+  /**
+   * SANDBOX demo data: paid sales for this device only, idempotent per sid, marked demo so unseed removes them.
+   * Quoted at the current (fixed demo) rate. Returns how many were created and how many already existed.
+   */
+  seedDemo(device: DeviceRow, entries: { sid: string; amountXof: number; paidAt: number }[]): { created: number; existing: number } | null {
+    let created = 0;
+    let existing = 0;
+    for (const e of entries) {
+      if (this.d.repo.getSale(device.id, e.sid)) {
+        existing++;
+        continue;
+      }
+      const q = this.d.fx.quote(e.amountXof);
+      if (!q) return null;
+      const row = this.newSale(device, { deviceId: device.id, sid: e.sid, amountXof: e.amountXof }, e.paidAt);
+      this.d.repo.insertSale({
+        ...row,
+        status: "paid",
+        quoteMsat: q.msat,
+        quoteRateMicro: q.eurPerBtcMicro,
+        quoteSource: q.source,
+        quoteFetchedAt: q.fetchedAt,
+        quotedAt: e.paidAt,
+        quoteExpiresAt: e.paidAt,
+        paidAt: e.paidAt,
+        demo: 1,
+      });
+      created++;
+    }
+    this.d.log.info("demo_seeded", { dev: hashId(device.id), created });
+    return { created, existing };
   }
 
   /** A3: receive-only wallet view. Totals are server computed; the backend part degrades to "unavailable". */
@@ -397,10 +441,14 @@ export class SaleService {
     };
   }
 
-  /** SANDBOX only: mark the fake invoice of an invoiced sale as paid, then check it. */
-  async sandboxPay(sid: string): Promise<boolean> {
+  /**
+   * SANDBOX only: mark the fake invoice of an invoiced sale as paid, then check it. `ref` is a sid (11 chars)
+   * or a payment hash (64 hex), so the customer simulator can pay from the invoice alone, holding no secret.
+   */
+  async sandboxPay(ref: string): Promise<boolean> {
     if (!this.d.sandbox) return false;
-    for (const row of this.d.repo.getSalesBySid(sid)) {
+    const rows = /^[0-9a-f]{64}$/.test(ref) ? [this.d.repo.getSaleByPaymentHash(ref)].filter((r): r is SaleRow => !!r) : this.d.repo.getSalesBySid(ref);
+    for (const row of rows) {
       const device = this.d.repo.getDevice(row.deviceId);
       if (device?.backend !== "sandbox" || row.status !== "invoiced" || !row.paymentHash) continue;
       if (!this.d.sandbox.markPaid(row.paymentHash)) continue;
