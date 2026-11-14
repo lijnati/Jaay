@@ -1,7 +1,7 @@
 // SANDBOX: a fake invoice backend. Invoices are not real and cannot be paid by any wallet;
 // POST /sandbox/pay/:sid marks one paid. Labeled as fake everywhere it surfaces (Hard rule 2).
 import { randomBytes } from "node:crypto";
-import type { Invoice, InvoiceBackend, InvoiceRequest, Lookup } from "./types";
+import type { BackendInfo, Invoice, InvoiceBackend, InvoiceRequest, Lookup } from "./types";
 
 export class SandboxBackend implements InvoiceBackend {
   private invoices = new Map<string, { paid: boolean }>();
@@ -17,6 +17,10 @@ export class SandboxBackend implements InvoiceBackend {
 
   async lookupInvoice(paymentHash: string): Promise<Lookup> {
     return this.invoices.get(paymentHash)?.paid ? { state: "settled" } : { state: "pending" };
+  }
+
+  async describe(): Promise<BackendInfo> {
+    return { label: "SANDBOX (simulated payments, no real bitcoin)", methods: ["make_invoice", "lookup_invoice"], balanceMsat: null };
   }
 
   /** Returns false for unknown invoices. */

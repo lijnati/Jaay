@@ -12,9 +12,19 @@ export interface Invoice {
 }
 export type Lookup = { state: "pending" } | { state: "settled" };
 
+/** What the Wallet screen shows about the backend (A3). */
+export interface BackendInfo {
+  label: string;
+  /** Methods the wallet service grants this connection. */
+  methods: string[];
+  /** Only when the connection is granted get_balance. */
+  balanceMsat: bigint | null;
+}
+
 export interface InvoiceBackend {
   makeInvoice(r: InvoiceRequest): Promise<Invoice>;
   lookupInvoice(paymentHash: string): Promise<Lookup>;
+  describe(): Promise<BackendInfo>;
   close?(): void;
 }
 

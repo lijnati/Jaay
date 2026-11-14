@@ -178,3 +178,94 @@ describe("A2 POST /v1/sales/reconcile", () => {
     expect((await signedPost(srv, dev, RECONCILE, { sales: Array.from({ length: 200 }, () => entry) })).status).toBe(200);
   });
 });
+
+describe("A3 POST /v1/wallet/summary", () => {
+  const SUMMARY = "/v1/wallet/summary";
+  const NWC = `nostr+walletconnect://${"1".repeat(64)}?relay=ws%3A%2F%2F127.0.0.1%3A10547&secret=${"2".repeat(64)}`;
+
+  test("server-computed totals for today and all time, last paid sales, receive-only statement", async () => {
+    const srv = await ready();
+    const dev = await enroll(srv);
+    const other = await enroll(srv);
+    const yesterday = await invoiced(srv, dev, 1000);
+    await srv.req(`/sandbox/pay/${yesterday.sid}`, { method: "POST" });
+    srv.clock.advance(24 * 3600_000);
+    await srv.fx.poll();
+    const today = await invoiced(srv, dev, 2500);
+    await srv.req(`/sandbox/pay/${today.sid}`, { method: "POST" });
+    await invoiced(srv, dev, 7000); // unpaid: not counted
+    const theirs = await invoiced(srv, other, 9000);
+    await srv.req(`/sandbox/pay/${theirs.sid}`, { method: "POST" });
+
+    const res = await signedPost(srv, dev, SUMMARY, {});
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const j = JSON.parse(text);
+    const msat = (sid: string) => srv.repo.getSale(dev.deviceId, sid)!.quoteMsat!;
+    expect(j.receiveOnly).toBe(true);
+    expect(j.backend).toMatchObject({ kind: "sandbox", available: true, spendMethods: [], balanceMsat: null });
+    expect(j.totals.today).toEqual({ xof: 2500, msat: String(msat(today.sid)), count: 1 });
+    expect(j.totals.allTime).toEqual({ xof: 3500, msat: String(msat(today.sid) + msat(yesterday.sid)), count: 2 });
+    expect(j.recent.map((r: { amountXof: number }) => r.amountXof)).toEqual([2500, 1000]);
+    expect(j.recent[0]).toMatchObject({ sid: today.sid.slice(0, 6), status: "paid" });
+    expect(text).not.toContain(today.sid); // short form only
+    expect(text).not.toContain(await deriveConfirmCode(dev.keys, today.sid));
+    expect(j.recent.some((r: { amountXof: number }) => r.amountXof === 9000)).toBe(false); // other device excluded
+  });
+
+  test("recent list is capped at 50", async () => {
+    const big: [number, number] = [1000, 60_000]; // 52 sales would trip the default callback limit
+    const srv = makeServer({ edges: { limits: { lnurlp: big, cb: big, sandbox: big } } });
+    await srv.fx.poll();
+    const dev = await enroll(srv);
+    for (let i = 0; i < 52; i++) {
+      const s = await invoiced(srv, dev, 100 + i);
+      await srv.req(`/sandbox/pay/${s.sid}`, { method: "POST" });
+    }
+    const j = await (await signedPost(srv, dev, SUMMARY, {})).json();
+    expect(j.recent).toHaveLength(50);
+    expect(j.totals.allTime.count).toBe(52);
+  });
+
+  test("NWC: balance only when get_balance is granted, labeled as the backend's report", async () => {
+    const srv = makeServer({ cfg: { sandbox: false } });
+    await srv.fx.poll();
+    const dev = await enroll(srv, { backend: "nwc", connection: NWC });
+    let j = await (await signedPost(srv, dev, SUMMARY, {})).json();
+    expect(j.backend).toMatchObject({ kind: "nwc", available: true, balanceMsat: null, spendMethods: [] });
+    srv.nwc.methods.push("get_balance");
+    srv.clock.advance(61_000); // info cache
+    j = await (await signedPost(srv, dev, SUMMARY, {})).json();
+    expect(j.backend.balanceMsat).toBe("123456000");
+    expect(j.backend.balanceNote).toMatch(/reported by the backend/i);
+  });
+
+  test("NWC: a spend method granted after enrollment is reported and receiveOnly turns false", async () => {
+    const srv = makeServer({ cfg: { sandbox: false } });
+    await srv.fx.poll();
+    const dev = await enroll(srv, { backend: "nwc", connection: NWC });
+    srv.nwc.methods.push("pay_invoice");
+    const j = await (await signedPost(srv, dev, SUMMARY, {})).json();
+    expect(j.receiveOnly).toBe(false);
+    expect(j.backend.spendMethods).toEqual(["pay_invoice"]);
+    expect(srv.logs.some((l) => l.includes("spend_method_detected"))).toBe(true);
+  });
+
+  test("NWC down: totals still served, backend marked unavailable", async () => {
+    const srv = makeServer({ cfg: { sandbox: false } });
+    await srv.fx.poll();
+    const dev = await enroll(srv, { backend: "nwc", connection: NWC });
+    srv.nwc.mode = "down";
+    const res = await signedPost(srv, dev, SUMMARY, {});
+    expect(res.status).toBe(200);
+    const j = await res.json();
+    expect(j.backend).toMatchObject({ available: false, spendMethods: null, balanceMsat: null });
+    expect(j.totals.allTime.count).toBe(0);
+  });
+
+  test("requires device auth", async () => {
+    const srv = await ready();
+    const dev = await enroll(srv);
+    expect((await signedPost(srv, dev, SUMMARY, {}, { omit: "x-jaay-sig" })).status).toBe(401);
+  });
+});

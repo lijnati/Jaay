@@ -13,6 +13,7 @@ import {
   type Sale,
 } from "@jaay/protocol";
 import type { Backends } from "./backends";
+import { spendMethods } from "./backends/nwc";
 import type { SandboxBackend } from "./backends/sandbox";
 import type { FxService } from "./fx";
 import { errName, hashId, type Logger } from "./log";
@@ -354,6 +355,42 @@ export class SaleService {
       });
     }
     return out;
+  }
+
+  /** A3: receive-only wallet view. Totals are server computed; the backend part degrades to "unavailable". */
+  async walletSummary(device: DeviceRow) {
+    const now = this.d.now();
+    const dayStart = now - (now % 86_400_000); // UTC day; Dakar is UTC+0
+    const paid = this.d.repo.paidSales(device.id);
+    const total = (rows: SaleRow[]) => ({
+      xof: rows.reduce((a, r) => a + r.amountXof, 0),
+      msat: String(rows.reduce((a, r) => a + (r.quoteMsat ?? 0n), 0n)),
+      count: rows.length,
+    });
+    let backend: { kind: string; label: string; available: boolean; spendMethods: string[] | null; balanceMsat: string | null; balanceNote: string | null };
+    try {
+      const info = await this.d.backends.forDevice(device).describe();
+      const spend = spendMethods(info.methods);
+      if (spend.length > 0) this.d.log.error("spend_method_detected", { dev: hashId(device.id), n: spend.length });
+      backend = {
+        kind: device.backend,
+        label: info.label,
+        available: true,
+        spendMethods: spend,
+        balanceMsat: info.balanceMsat === null ? null : String(info.balanceMsat),
+        balanceNote: info.balanceMsat === null ? null : "Balance as reported by the backend wallet, not computed by Jaay",
+      };
+    } catch (e) {
+      this.d.log.warn("describe_failed", { dev: hashId(device.id), err: errName(e) });
+      backend = { kind: device.backend, label: device.backend, available: false, spendMethods: null, balanceMsat: null, balanceNote: null };
+    }
+    return {
+      receiveOnly: backend.spendMethods === null || backend.spendMethods.length === 0,
+      backend,
+      totals: { today: total(paid.filter((r) => (r.paidAt ?? 0) >= dayStart)), allTime: total(paid) },
+      recent: paid.slice(0, 50).map((r) => ({ sid: r.sid.slice(0, 6), amountXof: r.amountXof, paidAt: new Date(r.paidAt!).toISOString(), status: r.status })),
+      generatedAt: new Date(now).toISOString(),
+    };
   }
 
   /** SANDBOX only: mark the fake invoice of an invoiced sale as paid, then check it. */

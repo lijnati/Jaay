@@ -48,6 +48,8 @@ export interface Repo {
   updateSale(deviceId: string, sid: string, from: SaleStatus, patch: Partial<SaleRow>): boolean;
   /** Sales whose invoice still needs a settlement check. */
   dueChecks(now: number, expiredSince: number, limit: number): SaleRow[];
+  /** Settled sales of one device, newest first. */
+  paidSales(deviceId: string): SaleRow[];
   /** Records a request nonce; false if this device already used it (replay). Expired nonces are purged. */
   useNonce(deviceId: string, nonce: string, expiresAt: number, now: number): boolean;
   close(): void;
@@ -183,6 +185,14 @@ export class SqliteRepo implements Repo {
          ORDER BY next_check_at LIMIT ?`,
       )
       .all(now, expiredSince, limit)
+      .map(rowToSale);
+  }
+
+  paidSales(deviceId: string) {
+    // shortcut: loads every settled row of the device; add SQL aggregation if a device ever has tens of thousands of sales
+    return this.db
+      .prepare("SELECT * FROM sales WHERE device_id = ? AND status IN ('paid','paid_late') ORDER BY paid_at DESC, sid")
+      .all(deviceId)
       .map(rowToSale);
   }
 

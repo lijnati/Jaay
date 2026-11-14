@@ -206,6 +206,16 @@ export function createApp(d: AppDeps) {
     return c.json({ results, ...sb });
   });
 
+  app.post("/v1/wallet/summary", deviceLimit, async (c) => {
+    if (!allowed(c, "device")) return c.json({ error: "too many requests", ...sb }, 429);
+    const r = await deviceRequest(c);
+    if (!r) {
+      d.log.info("device_auth_failed", { route: c.req.path });
+      return unauthorized(c);
+    }
+    return c.json({ ...(await d.sales.walletSummary(r.device)), ...sb });
+  });
+
   // ---------- SANDBOX only ----------
   if (d.sandbox) {
     app.post("/sandbox/pay/:sid", async (c) => {

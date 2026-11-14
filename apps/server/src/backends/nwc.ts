@@ -2,13 +2,14 @@
 // Resilience: every call has a short timeout; a network or timeout failure drops the client, and the next call
 // builds a fresh one (reconnect). All failures surface as BackendUnavailable with no detail.
 import { NWCClient } from "@getalby/sdk/nwc";
-import { BackendUnavailable, isTestNetworkInvoice, withTimeout, type Invoice, type InvoiceBackend, type InvoiceRequest, type Lookup } from "./types";
+import { BackendUnavailable, isTestNetworkInvoice, withTimeout, type BackendInfo, type Invoice, type InvoiceBackend, type InvoiceRequest, type Lookup } from "./types";
 
 /** The subset of NWCClient Jaay uses; tests provide fakes. */
 export interface NwcClientLike {
   getInfo(): Promise<{ methods: string[]; network?: string }>;
   makeInvoice(r: { amount: number; description_hash: string; expiry: number }): Promise<{ invoice: string; payment_hash: string; expires_at?: number }>;
   lookupInvoice(r: { payment_hash: string }): Promise<{ state?: string; settled_at?: number }>;
+  getBalance?(): Promise<{ balance: number }>;
   close(): void;
 }
 export type NwcFactory = (url: string) => NwcClientLike;
@@ -25,10 +26,17 @@ const TEST_NETWORKS = new Set(["regtest", "signet", "testnet", "mutinynet"]);
  * (the known four, or anything with "pay" in its name). Extra non-spend methods are fine.
  * Hard rule 1: the wallet must report a test network.
  */
+/** Methods that could move money out: the known four, or anything with "pay" in its name. */
+export function spendMethods(methods: string[]): string[] {
+  return methods.filter((m) => SPEND_METHODS.includes(m) || /pay/i.test(m));
+}
+
+const stringList = (v: unknown) => (Array.isArray(v) ? v.filter((m): m is string => typeof m === "string") : []);
+
 export function nwcInfoAcceptable(info: { methods?: unknown; network?: unknown }): boolean {
-  const methods = Array.isArray(info.methods) ? info.methods.filter((m): m is string => typeof m === "string") : [];
+  const methods = stringList(info.methods);
   if (!methods.includes("make_invoice") || !methods.includes("lookup_invoice")) return false;
-  if (methods.some((m) => SPEND_METHODS.includes(m) || /pay/i.test(m))) return false;
+  if (spendMethods(methods).length > 0) return false;
   return typeof info.network === "string" && TEST_NETWORKS.has(info.network.toLowerCase());
 }
 
@@ -36,8 +44,11 @@ export function looksLikeNwcUrl(text: string): boolean {
   return /^nostr\+walletconnect:\/\/[0-9a-f]{64}\?/.test(text) && text.length <= 1024;
 }
 
+const INFO_TTL_MS = 60_000;
+
 export class NwcBackend implements InvoiceBackend {
   private client: NwcClientLike | undefined;
+  private info: { at: number; methods: string[] } | undefined;
 
   constructor(
     private url: string,
@@ -78,6 +89,20 @@ export class NwcBackend implements InvoiceBackend {
     const tx = await this.call((c) => c.makeInvoice({ amount: Number(r.msat), description_hash: r.descriptionHashHex, expiry: r.expirySec }));
     if (typeof tx.invoice !== "string" || !isTestNetworkInvoice(tx.invoice) || !/^[0-9a-f]{64}$/.test(tx.payment_hash)) throw new BackendUnavailable();
     return { invoice: tx.invoice, paymentHash: tx.payment_hash, expiresAt: this.now() + r.expirySec * 1000 };
+  }
+
+  /** Granted methods (get_info, cached 60 s) and, only if get_balance is granted, the wallet's own balance. */
+  async describe(): Promise<BackendInfo> {
+    const now = this.now();
+    if (!this.info || now - this.info.at > INFO_TTL_MS) this.info = { at: now, methods: stringList((await this.call((c) => c.getInfo())).methods) };
+    const methods = this.info.methods;
+    let balanceMsat: bigint | null = null;
+    if (methods.includes("get_balance")) {
+      const b = await this.call(async (c) => (c.getBalance ? c.getBalance() : Promise.reject(new BackendUnavailable())));
+      if (!Number.isSafeInteger(b.balance) || b.balance < 0) throw new BackendUnavailable();
+      balanceMsat = BigInt(b.balance);
+    }
+    return { label: "Nostr Wallet Connect (receive-only connection)", methods, balanceMsat };
   }
 
   async lookupInvoice(paymentHash: string): Promise<Lookup> {

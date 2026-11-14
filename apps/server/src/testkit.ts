@@ -59,6 +59,7 @@ export const ALBY_HUB_METHODS = ["get_info", "make_invoice", "make_hold_invoice"
 export class FakeNwcWallet {
   methods = [...ALBY_HUB_METHODS];
   network = "regtest";
+  balanceMsat = 123_456_000;
   mode: "ok" | "down" | "hang" = "ok";
   clientsCreated = 0;
   invoices = new Map<string, { invoice: string; settled: boolean; descriptionHash: string; amount: number; expiry: number }>();
@@ -89,6 +90,10 @@ export class FakeNwcWallet {
         const invoice = `lnbcrt${Math.floor(r.amount / 1000)}0n1fakeinvoice${hash}${this.leak ? "x" : ""}`;
         this.invoices.set(hash, { invoice, settled: false, descriptionHash: r.description_hash, amount: r.amount, expiry: r.expiry });
         return { invoice, payment_hash: hash };
+      },
+      getBalance: async () => {
+        await gate();
+        return { balance: this.balanceMsat };
       },
       lookupInvoice: async (r) => {
         await gate();

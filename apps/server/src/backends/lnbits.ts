@@ -1,7 +1,7 @@
 // LNbits fallback with an INVOICE key (receive-only by LNbits design). Connection string:
 //   https://lnbits.example/?api-key=<invoice key>    (http allowed only for localhost)
 // Tested against a mocked HTTP server only; a real LNbits instance was NOT RUN.
-import { BackendUnavailable, isTestNetworkInvoice, withTimeout, type Invoice, type InvoiceBackend, type InvoiceRequest, type Lookup } from "./types";
+import { BackendUnavailable, isTestNetworkInvoice, withTimeout, type BackendInfo, type Invoice, type InvoiceBackend, type InvoiceRequest, type Lookup } from "./types";
 
 export interface LnbitsConn {
   url: string;
@@ -68,6 +68,11 @@ export class LnbitsBackend implements InvoiceBackend {
     if (typeof invoice !== "string" || typeof paymentHash !== "string" || !/^[0-9a-f]{64}$/.test(paymentHash)) throw new BackendUnavailable();
     if (!isTestNetworkInvoice(invoice)) throw new BackendUnavailable();
     return { invoice, paymentHash, expiresAt: this.now() + r.expirySec * 1000 };
+  }
+
+  /** An LNbits invoice key cannot pay by design; its permissions cannot be introspected beyond that. */
+  async describe(): Promise<BackendInfo> {
+    return { label: "LNbits (invoice key)", methods: ["make_invoice", "lookup_invoice"], balanceMsat: null };
   }
 
   async lookupInvoice(paymentHash: string): Promise<Lookup> {
