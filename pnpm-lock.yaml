@@ -27,7 +27,18 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15))
 
-  apps/customer-sim: {}
+  apps/customer-sim:
+    dependencies:
+      light-bolt11-decoder:
+        specifier: 3.2.0
+        version: 3.2.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      vite:
+        specifier: 8.3.8
+        version: 8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15)
 
   apps/pos:
     dependencies:

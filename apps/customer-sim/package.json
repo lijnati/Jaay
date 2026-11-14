@@ -3,11 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
+    "dev": "vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "vite build"
+  },
+  "dependencies": {
+    "light-bolt11-decoder": "3.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "vite": "8.3.8"
   }
 }
