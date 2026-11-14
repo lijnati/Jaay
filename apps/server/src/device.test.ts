@@ -2,6 +2,7 @@
 import { deriveConfirmCode, deriveKeys, generateDeviceSecret } from "@jaay/protocol";
 import { describe, expect, test } from "vitest";
 import { EXPIRY_GRACE_MS, INVOICE_EXPIRY_SEC } from "./sales";
+import { encodeBolt11, invoiceMatches } from "./bolt11";
 import { ConfigError, loadConfig } from "./config";
 import { enroll, ENROLL_TOKEN, makeServer, q, sell, signedPost, type Device } from "./testkit";
 
@@ -307,5 +308,52 @@ describe("A4 operator enrollment token", () => {
     expect(() => loadConfig({ ...base, JAAY_ENROLL_TOKEN: "short" })).toThrow(ConfigError);
     expect(loadConfig({ ...base, SANDBOX: "1" }).enrollToken).toBeNull();
     expect(loadConfig({ ...base, JAAY_ENROLL_TOKEN: "x".repeat(32) }).enrollToken).toBe("x".repeat(32));
+  });
+});
+
+describe("A5 invoice decode check", () => {
+  const NWC = `nostr+walletconnect://${"1".repeat(64)}?relay=ws%3A%2F%2F127.0.0.1%3A10547&secret=${"2".repeat(64)}`;
+
+  test("encoder and decoder agree on every field we check", async () => {
+    const pr = encodeBolt11({ network: "signet", msat: 2_446_000n, paymentHash: "a".repeat(64), descriptionHash: "b".repeat(64), timestampSec: 1_800_000_000, expirySec: 600 });
+    expect(pr.startsWith("lntbs24460n1")).toBe(true);
+    const ok = { network: "signet" as const, msat: 2_446_000n, paymentHash: "a".repeat(64), descriptionHashHex: "b".repeat(64), now: 1_800_000_000_000 };
+    expect(invoiceMatches(pr, ok)).toBe(true);
+    expect(invoiceMatches(pr, { ...ok, network: "regtest" })).toBe(false);
+    expect(invoiceMatches(pr, { ...ok, msat: 2_447_000n })).toBe(false);
+    expect(invoiceMatches(pr, { ...ok, descriptionHashHex: "c".repeat(64) })).toBe(false);
+    expect(invoiceMatches(pr, { ...ok, paymentHash: "c".repeat(64) })).toBe(false);
+    expect(invoiceMatches(pr, { ...ok, now: 1_800_000_600_000 })).toBe(false);
+    expect(invoiceMatches(`${pr.slice(0, -1)}q`, ok)).toBe(false); // bad checksum
+    expect(invoiceMatches("lnbc1garbage", ok)).toBe(false);
+    const msatOnly = encodeBolt11({ network: "regtest", msat: 1_234_567n, paymentHash: "a".repeat(64), descriptionHash: "b".repeat(64), timestampSec: 1, expirySec: 600 });
+    expect(invoiceMatches(msatOnly, { ...ok, network: "regtest", msat: 1_234_567n, now: 1000 })).toBe(true);
+  });
+
+  test.each(["network", "amount", "descriptionHash", "noDescriptionHash", "expired", "paymentHash"] as const)(
+    "a wallet returning a bad invoice (%s) fails closed with the generic error",
+    async (tamper) => {
+      const srv = makeServer({ cfg: { sandbox: false } });
+      await srv.fx.poll();
+      const dev = await enroll(srv, { backend: "nwc", connection: NWC });
+      const { token, sid } = await sell(dev, 1000);
+      const pr = (await (await srv.req(`/lnurlp?p=${q(token)}`)).json()) as { callback: string; minSendable: number };
+      srv.nwc.tamper = tamper;
+      const res = await srv.req(`${pr.callback.slice("http://localhost:8787".length)}&amount=${pr.minSendable}`);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ status: "ERROR", reason: "Invalid or expired sale" });
+      expect(srv.repo.getSale(dev.deviceId, sid)!.status).toBe("quoted"); // nothing stored
+      expect(srv.logs.some((l) => l.includes("invoice_rejected"))).toBe(true);
+      srv.nwc.tamper = null; // the same sale still works once the wallet behaves
+      expect((await srv.req(`${pr.callback.slice("http://localhost:8787".length)}&amount=${pr.minSendable}`)).status).toBe(200);
+    },
+  );
+
+  test("sandbox invoices pass the same check and carry the configured network", async () => {
+    const srv = makeServer({ cfg: { network: "signet" } });
+    await srv.fx.poll();
+    const dev = await enroll(srv);
+    const { cb } = { cb: await invoiced(srv, dev, 1000) };
+    expect(srv.repo.getSale(dev.deviceId, cb.sid)!.invoice!.startsWith("lntbs")).toBe(true);
   });
 });

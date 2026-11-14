@@ -15,6 +15,7 @@ import {
 import type { Backends } from "./backends";
 import { spendMethods } from "./backends/nwc";
 import type { SandboxBackend } from "./backends/sandbox";
+import { invoiceMatches, type Network } from "./bolt11";
 import type { FxService } from "./fx";
 import { errName, hashId, type Logger } from "./log";
 import type { DeviceRow, Repo, SaleRow } from "./repo";
@@ -85,6 +86,7 @@ export interface SaleDeps {
   now: () => number;
   log: Logger;
   baseUrl: string;
+  network: Network;
   /** Injected so tests can prove an over-long token never reaches the decoder. */
   decode?: (token: string, keys: DeviceKeys, opts: LimitOptions) => Promise<Sale>;
 }
@@ -258,14 +260,16 @@ export class SaleService {
       }
       if (row.status !== "quoted" || now >= row.quoteExpiresAt!) throw new SaleRejected();
       let inv;
+      const descriptionHashHex = createHash("sha256").update(this.metadata(row, device)).digest("hex");
       try {
-        inv = await this.d.backends.forDevice(device).makeInvoice({
-          msat,
-          descriptionHashHex: createHash("sha256").update(this.metadata(row, device)).digest("hex"),
-          expirySec: INVOICE_EXPIRY_SEC,
-        });
+        inv = await this.d.backends.forDevice(device).makeInvoice({ msat, descriptionHashHex, expirySec: INVOICE_EXPIRY_SEC });
       } catch (e) {
         this.d.log.warn("invoice_failed", { dev: hashId(device.id), err: errName(e) });
+        throw new SaleRejected();
+      }
+      // A5: the wallet must return exactly what was asked for, on our network, not already expired.
+      if (!invoiceMatches(inv.invoice, { network: this.d.network, msat, paymentHash: inv.paymentHash, descriptionHashHex, now })) {
+        this.d.log.warn("invoice_rejected", { dev: hashId(device.id) });
         throw new SaleRejected();
       }
       const patch: Partial<SaleRow> = {

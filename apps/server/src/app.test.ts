@@ -61,7 +61,7 @@ describe("golden path (sandbox, through HTTP)", () => {
     expect(text).toContain("1000 XOF");
 
     const { cb } = await invoiceFor(srv, token);
-    expect(cb.pr).toMatch(/^lnbcrt1sandboxfake/);
+    expect(cb.pr).toMatch(/^lnbcrt24460n1/); // decodes as 2446 sat on regtest
     expect(cb.successAction.tag).toBe("url");
     expect(cb.successAction.description.length).toBeGreaterThan(0);
     expect(new URL(cb.successAction.url).host).toBe(new URL(j.callback as string).host); // Phoenix: same host

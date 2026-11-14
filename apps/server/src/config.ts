@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { buildSaleLnurl } from "@jaay/protocol";
+import type { Network } from "./bolt11";
 
 export interface Config {
   port: number;
@@ -22,6 +23,8 @@ export interface Config {
   nwcAllowedRelays: string[];
   /** A4: JAAY_ENROLL_TOKEN, required as a Bearer token for every non-sandbox enrollment. */
   enrollToken: string | null;
+  /** JAAY_NETWORK: the only network whose invoices are accepted (A5, Hard rule 1). */
+  network: Network;
 }
 
 export const DEFAULT_NWC_RELAYS = ["wss://relay.getalby.com/v1", "wss://relay2.getalby.com/v1"];
@@ -66,6 +69,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError("JAAY_ENROLL_TOKEN is required in production when a non-sandbox backend can be enrolled");
   }
 
+  const network = (env.JAAY_NETWORK ?? "regtest") as Network;
+  if (!["regtest", "signet", "testnet"].includes(network)) throw new ConfigError("JAAY_NETWORK must be regtest, signet or testnet");
+
   return {
     port,
     baseUrl,
@@ -79,5 +85,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     lnbitsAllowedHosts: list(env.LNBITS_ALLOWED_HOSTS).map((h) => h.toLowerCase()),
     nwcAllowedRelays: env.NWC_ALLOWED_RELAYS ? list(env.NWC_ALLOWED_RELAYS) : DEFAULT_NWC_RELAYS,
     enrollToken,
+    network,
   };
 }

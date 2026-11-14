@@ -18,5 +18,6 @@ export function testConfigFromEnv(port: number): Config {
     lnbitsAllowedHosts: [],
     nwcAllowedRelays: ["ws://127.0.0.1:10547"],
     enrollToken: REGTEST_ENROLL_TOKEN,
+    network: "regtest",
   };
 }

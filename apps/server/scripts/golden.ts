@@ -35,7 +35,7 @@ step("GET /lnurlp", pr.status === 200 && pay.tag === "payRequest" && pay.minSend
 
 const cb = await get(`${pay.callback as string}&amount=${pay.minSendable}`);
 const inv = cb.json() as { pr: string; successAction: { url: string } };
-step("GET /lnurlp/cb", cb.status === 200 && inv.pr.startsWith("lnbcrt1sandboxfake"), "fake sandbox invoice");
+step("GET /lnurlp/cb", cb.status === 200 && inv.pr.startsWith("lnbcrt"), "sandbox invoice (zero signature, unpayable by wallets)");
 
 const rt = inv.successAction.url.split("/r/")[1]!;
 const before = await get(`${base}/api/receipt/${rt}/status`);

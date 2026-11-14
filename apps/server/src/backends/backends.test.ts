@@ -29,7 +29,7 @@ describe("sandbox backend", () => {
     const clock = new Clock();
     const b = new SandboxBackend(clock.now);
     const inv = await b.makeInvoice({ msat: 1000n, descriptionHashHex: DH, expirySec: 600 });
-    expect(inv.invoice).toMatch(/^lnbcrt1sandboxfake[0-9a-f]{64}$/);
+    expect(inv.invoice).toMatch(/^lnbcrt10n1[02-9ac-hj-np-z]+$/); // real BOLT11 layout, zero signature
     expect(inv.expiresAt).toBe(clock.t + 600_000);
     expect(await b.lookupInvoice(inv.paymentHash)).toEqual({ state: "pending" });
     expect(b.markPaid("0".repeat(64))).toBe(false);

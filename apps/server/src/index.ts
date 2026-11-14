@@ -39,7 +39,7 @@ export function buildServer(cfg: Config, edges: Edges = {}) {
   const repo = new SqliteRepo(cfg.dbPath);
   const sealer = createSealer(cfg.masterKey);
   const fx = new FxService({ fetch: fetchFn, now, log });
-  const sandbox = cfg.sandbox ? new SandboxBackend(now) : null;
+  const sandbox = cfg.sandbox ? new SandboxBackend(now, cfg.network) : null;
   const backends = new Backends({
     sealer,
     nwcFactory: edges.nwcFactory ?? sdkNwcFactory,
@@ -51,7 +51,7 @@ export function buildServer(cfg: Config, edges: Edges = {}) {
     nwcAllowedRelays: cfg.nwcAllowedRelays,
     timeoutMs: edges.backendTimeoutMs,
   });
-  const sales = new SaleService({ repo, sealer, fx, backends, sandbox, now, log, baseUrl: cfg.baseUrl, decode: edges.decode });
+  const sales = new SaleService({ repo, sealer, fx, backends, sandbox, now, log, baseUrl: cfg.baseUrl, network: cfg.network, decode: edges.decode });
   const poller = new SettlementPoller(repo, sales, now, log);
   const app = createApp({
     repo,

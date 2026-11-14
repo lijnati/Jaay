@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import { deriveKeys, encodeSale, secretFromString, type DeviceKeys } from "@jaay/protocol";
 import type { Config } from "./config";
+import { encodeBolt11 } from "./bolt11";
 import type { NwcClientLike } from "./backends/nwc";
 import { buildServer, type Edges } from "./index";
 
@@ -23,6 +24,7 @@ export function testConfig(over: Partial<Config> = {}): Config {
     lnbitsAllowedHosts: [],
     nwcAllowedRelays: ["ws://127.0.0.1:10547"],
     enrollToken: ENROLL_TOKEN,
+    network: "regtest",
     ...over,
   };
 }
@@ -62,6 +64,9 @@ export class FakeNwcWallet {
   methods = [...ALBY_HUB_METHODS];
   network = "regtest";
   balanceMsat = 123_456_000;
+  now: () => number = Date.now;
+  /** A5: make the wallet return a subtly wrong invoice. */
+  tamper: null | "network" | "amount" | "descriptionHash" | "noDescriptionHash" | "expired" | "paymentHash" = null;
   mode: "ok" | "down" | "hang" = "ok";
   clientsCreated = 0;
   invoices = new Map<string, { invoice: string; settled: boolean; descriptionHash: string; amount: number; expiry: number }>();
@@ -89,7 +94,15 @@ export class FakeNwcWallet {
       makeInvoice: async (r) => {
         await gate();
         const hash = (++this.n).toString(16).padStart(64, "0");
-        const invoice = `lnbcrt${Math.floor(r.amount / 1000)}0n1fakeinvoice${hash}${this.leak ? "x" : ""}`;
+        const t = this.tamper;
+        const invoice = encodeBolt11({
+          network: t === "network" ? "signet" : "regtest",
+          msat: BigInt(r.amount) + (t === "amount" ? 1000n : 0n),
+          paymentHash: t === "paymentHash" ? "f".repeat(64) : hash,
+          descriptionHash: t === "noDescriptionHash" ? null : t === "descriptionHash" ? "e".repeat(64) : r.description_hash,
+          timestampSec: Math.floor(this.now() / 1000) - (t === "expired" ? 2 * r.expiry : 0),
+          expirySec: r.expiry,
+        });
         this.invoices.set(hash, { invoice, settled: false, descriptionHash: r.description_hash, amount: r.amount, expiry: r.expiry });
         return { invoice, payment_hash: hash };
       },
@@ -118,6 +131,7 @@ export function makeServer(opts: { cfg?: Partial<Config>; edges?: Edges } = {}) 
   const fx = new FakeFx();
   const logs: string[] = [];
   const nwc = new FakeNwcWallet();
+  nwc.now = clock.now;
   const s = buildServer(testConfig(opts.cfg), {
     fetch: fx.fetch,
     now: clock.now,
