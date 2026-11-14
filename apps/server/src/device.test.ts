@@ -2,7 +2,8 @@
 import { deriveConfirmCode, deriveKeys, generateDeviceSecret } from "@jaay/protocol";
 import { describe, expect, test } from "vitest";
 import { EXPIRY_GRACE_MS, INVOICE_EXPIRY_SEC } from "./sales";
-import { enroll, makeServer, q, sell, signedPost, type Device } from "./testkit";
+import { ConfigError, loadConfig } from "./config";
+import { enroll, ENROLL_TOKEN, makeServer, q, sell, signedPost, type Device } from "./testkit";
 
 type Srv = ReturnType<typeof makeServer>;
 const RECONCILE = "/v1/sales/reconcile";
@@ -267,5 +268,44 @@ describe("A3 POST /v1/wallet/summary", () => {
     const srv = await ready();
     const dev = await enroll(srv);
     expect((await signedPost(srv, dev, SUMMARY, {}, { omit: "x-jaay-sig" })).status).toBe(401);
+  });
+});
+
+describe("A4 operator enrollment token", () => {
+  const NWC = `nostr+walletconnect://${"1".repeat(64)}?relay=ws%3A%2F%2F127.0.0.1%3A10547&secret=${"2".repeat(64)}`;
+  const body = (backend: string, connection = "") => JSON.stringify({ label: "x", backend, connection, minXof: 1, maxXof: 10 });
+  const post = (srv: Srv, b: string, auth?: string) =>
+    srv.req("/api/enroll", { method: "POST", headers: { "content-type": "application/json", ...(auth ? { authorization: auth } : {}) }, body: b });
+
+  test("non-sandbox enrollment needs the bearer token; every failure is the same answer", async () => {
+    const srv = makeServer({ cfg: { sandbox: false } });
+    const generic = JSON.stringify({ error: "enrollment rejected" });
+    for (const auth of [undefined, "Bearer wrong", `Bearer ${ENROLL_TOKEN}x`, `bearer${ENROLL_TOKEN}`, ENROLL_TOKEN]) {
+      const res = await post(srv, body("nwc", NWC), auth);
+      expect.soft(res.status, String(auth)).toBe(400);
+      expect.soft(await res.text(), String(auth)).toBe(generic);
+    }
+    expect((await post(srv, body("nwc", NWC), `Bearer ${ENROLL_TOKEN}`)).status).toBe(200);
+  });
+
+  test("with no token configured, non-sandbox enrollment is impossible", async () => {
+    const srv = makeServer({ cfg: { sandbox: false, enrollToken: null } });
+    expect((await post(srv, body("nwc", NWC), `Bearer ${ENROLL_TOKEN}`)).status).toBe(400);
+  });
+
+  test("sandbox enrollment stays open (rate limited); mixed mode still guards real backends", async () => {
+    const srv = makeServer({ cfg: { allowMixed: true } });
+    expect((await post(srv, body("sandbox"))).status).toBe(200);
+    expect((await post(srv, body("nwc", NWC))).status).toBe(400);
+    expect((await post(srv, body("nwc", NWC), `Bearer ${ENROLL_TOKEN}`)).status).toBe(200);
+  });
+
+  test("production refuses to start without a token when a non-sandbox backend is enabled", () => {
+    const base = { NODE_ENV: "production", BASE_URL: "https://pay.example.sn", JAAY_MASTER_KEY: Buffer.alloc(32, 7).toString("base64") };
+    expect(() => loadConfig(base)).toThrow(ConfigError);
+    expect(() => loadConfig({ ...base, SANDBOX: "1", JAAY_ALLOW_MIXED: "1" })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...base, JAAY_ENROLL_TOKEN: "short" })).toThrow(ConfigError);
+    expect(loadConfig({ ...base, SANDBOX: "1" }).enrollToken).toBeNull();
+    expect(loadConfig({ ...base, JAAY_ENROLL_TOKEN: "x".repeat(32) }).enrollToken).toBe("x".repeat(32));
   });
 });

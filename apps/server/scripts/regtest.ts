@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import https from "node:https";
 import { deriveConfirmCode, deriveKeys, encodeSale, secretFromString } from "@jaay/protocol";
-import { testConfigFromEnv } from "./regtest-config";
+import { REGTEST_ENROLL_TOKEN, testConfigFromEnv } from "./regtest-config";
 import { buildServer, listen } from "../src/index";
 import { installConsoleGuard } from "../src/log";
 
@@ -69,7 +69,7 @@ step("FX rate available", s.fx.status() === "ok");
 
 const en = await getJson(`${B}/api/enroll`, {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", authorization: `Bearer ${REGTEST_ENROLL_TOKEN}` },
   body: JSON.stringify({ label: "Regtest Hub", backend: "nwc", connection: NWC_URL, minXof: 50, maxXof: 100000 }),
 });
 step("enroll real Alby Hub NWC (receive-only check via get_info)", en.status === 200);

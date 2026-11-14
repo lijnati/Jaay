@@ -7,6 +7,7 @@ import { buildServer, type Edges } from "./index";
 
 export const T0 = Date.UTC(2026, 10, 14, 9, 0, 0);
 export const MASTER_KEY = new Uint8Array(32).map((_, i) => i + 1);
+export const ENROLL_TOKEN = "test-operator-enroll-token-0123456789";
 
 export function testConfig(over: Partial<Config> = {}): Config {
   return {
@@ -21,6 +22,7 @@ export function testConfig(over: Partial<Config> = {}): Config {
     trustProxy: false,
     lnbitsAllowedHosts: [],
     nwcAllowedRelays: ["ws://127.0.0.1:10547"],
+    enrollToken: ENROLL_TOKEN,
     ...over,
   };
 }
@@ -145,7 +147,7 @@ export async function enroll(
 ): Promise<Device> {
   const res = await srv.req("/api/enroll", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", authorization: `Bearer ${ENROLL_TOKEN}` },
     body: JSON.stringify({ label: "Boutique Test", backend: "sandbox", connection: "", minXof: 50, maxXof: 5_000_000, ...body }),
   });
   if (res.status !== 200) throw new Error(`enroll failed ${res.status}`);

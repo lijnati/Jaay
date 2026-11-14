@@ -64,7 +64,7 @@ describe("master key config", () => {
   test("production refuses to start without a valid master key", () => {
     expect(() => loadConfig({ NODE_ENV: "production", BASE_URL: "https://pay.example.sn" })).toThrow(ConfigError);
     expect(() => loadConfig({ NODE_ENV: "production", BASE_URL: "https://pay.example.sn", JAAY_MASTER_KEY: "bad" })).toThrow(ConfigError);
-    expect(loadConfig({ NODE_ENV: "production", BASE_URL: "https://pay.example.sn", JAAY_MASTER_KEY: good }).ephemeralMasterKey).toBe(false);
+    expect(loadConfig({ NODE_ENV: "production", BASE_URL: "https://pay.example.sn", JAAY_MASTER_KEY: good, JAAY_ENROLL_TOKEN: "t".repeat(32) }).ephemeralMasterKey).toBe(false);
   });
 
   test("dev without a key gets an ephemeral one; a malformed key is still refused", () => {

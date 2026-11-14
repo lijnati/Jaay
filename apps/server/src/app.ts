@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { generateDeviceSecret, newDeviceId, secretToString } from "@jaay/protocol";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -27,6 +28,7 @@ export interface AppDeps {
   now: () => number;
   baseUrl: string;
   sandbox: boolean;
+  enrollToken: string | null;
   /** Client IP for rate limiting. Defaults to the socket address (see main.ts). */
   clientIp: (c: Context) => string;
   limits?: Partial<Record<Bucket, [number, number]>>;
@@ -59,6 +61,14 @@ export function parseReconcile(body: unknown): ReconcileEntry[] | null {
     out.push({ sid, amountXof: amountXof as number, claimedAt: claimedAt as number, confirmed });
   }
   return out;
+}
+
+/** A4: "Bearer <token>", compared in constant time (both sides hashed to equal length first). */
+export function operatorAuthorized(header: string | undefined, token: string | null): boolean {
+  if (!token || !header?.startsWith("Bearer ")) return false;
+  const a = createHash("sha256").update(header.slice(7)).digest();
+  const b = createHash("sha256").update(token).digest();
+  return timingSafeEqual(a, b);
 }
 
 export function createApp(d: AppDeps) {
@@ -154,6 +164,10 @@ export function createApp(d: AppDeps) {
     const okLimits =
       Number.isSafeInteger(minXof) && Number.isSafeInteger(maxXof) && (minXof as number) >= 1 && (minXof as number) <= (maxXof as number) && (maxXof as number) <= 0xffffffff;
     if (!okLabel || !okBackend || !okConn || !okLimits) return reject();
+    if (backend !== "sandbox" && !operatorAuthorized(c.req.header("authorization"), d.enrollToken)) {
+      d.log.info("enroll_rejected", { backend: backend as string });
+      return reject();
+    }
     if (!(await d.backends.acceptable(backend as Backend, connection as string))) {
       d.log.info("enroll_rejected", { backend: backend as string });
       return reject();

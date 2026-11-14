@@ -20,6 +20,8 @@ export interface Config {
    */
   lnbitsAllowedHosts: string[];
   nwcAllowedRelays: string[];
+  /** A4: JAAY_ENROLL_TOKEN, required as a Bearer token for every non-sandbox enrollment. */
+  enrollToken: string | null;
 }
 
 export const DEFAULT_NWC_RELAYS = ["wss://relay.getalby.com/v1", "wss://relay2.getalby.com/v1"];
@@ -56,17 +58,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ephemeralMasterKey = true;
   }
 
+  const enrollToken = env.JAAY_ENROLL_TOKEN || null;
+  if (enrollToken !== null && enrollToken.length < 32) throw new ConfigError("JAAY_ENROLL_TOKEN must be at least 32 characters");
+  const sandbox = env.SANDBOX === "1";
+  const allowMixed = env.JAAY_ALLOW_MIXED === "1";
+  if (production && (!sandbox || allowMixed) && !enrollToken) {
+    throw new ConfigError("JAAY_ENROLL_TOKEN is required in production when a non-sandbox backend can be enrolled");
+  }
+
   return {
     port,
     baseUrl,
     dbPath: env.DB_PATH ?? (production ? "/data/jaay.sqlite" : ":memory:"),
     production,
-    sandbox: env.SANDBOX === "1",
-    allowMixed: env.JAAY_ALLOW_MIXED === "1",
+    sandbox,
+    allowMixed,
     masterKey,
     ephemeralMasterKey,
     trustProxy: env.TRUST_PROXY === "1",
     lnbitsAllowedHosts: list(env.LNBITS_ALLOWED_HOSTS).map((h) => h.toLowerCase()),
     nwcAllowedRelays: env.NWC_ALLOWED_RELAYS ? list(env.NWC_ALLOWED_RELAYS) : DEFAULT_NWC_RELAYS,
+    enrollToken,
   };
 }

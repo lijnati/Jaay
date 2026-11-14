@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { Config } from "../src/config";
 
+export const REGTEST_ENROLL_TOKEN = randomBytes(24).toString("base64url");
+
 /** Non-sandbox server on localhost that accepts only the local S1 relay. Ephemeral key and in-memory DB. */
 export function testConfigFromEnv(port: number): Config {
   return {
@@ -15,5 +17,6 @@ export function testConfigFromEnv(port: number): Config {
     trustProxy: false,
     lnbitsAllowedHosts: [],
     nwcAllowedRelays: ["ws://127.0.0.1:10547"],
+    enrollToken: REGTEST_ENROLL_TOKEN,
   };
 }
