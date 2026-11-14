@@ -7,7 +7,8 @@ import { errName, hashId, type Logger } from "./log";
 import { RateLimiter } from "./ratelimit";
 import { pickLang, RECEIPT_CSP, renderReceipt } from "./receipt";
 import type { Backend, Repo } from "./repo";
-import { secretPurpose, type SaleService } from "./sales";
+import { verifyDeviceRequest } from "./deviceauth";
+import { secretPurpose, type ReconcileEntry, type SaleService } from "./sales";
 import type { Sealer } from "./seal";
 
 /** The one LNURL error body for every verification failure (Hard rule 7). */
@@ -30,7 +31,7 @@ export interface AppDeps {
   clientIp: (c: Context) => string;
   limits?: Partial<Record<Bucket, [number, number]>>;
 }
-type Bucket = "lnurlp" | "cb" | "enroll" | "receipt" | "sandbox";
+type Bucket = "lnurlp" | "cb" | "enroll" | "receipt" | "sandbox" | "device";
 // [requests, window ms] per IP.
 const DEFAULT_LIMITS: Record<Bucket, [number, number]> = {
   lnurlp: [60, 60_000],
@@ -38,7 +39,27 @@ const DEFAULT_LIMITS: Record<Bucket, [number, number]> = {
   enroll: [10, 3600_000],
   receipt: [60, 60_000],
   sandbox: [30, 60_000],
+  device: [120, 60_000],
 };
+const MAX_RECONCILE = 200;
+const SID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+/** Strict shape check for a reconcile batch; null when anything is off. */
+export function parseReconcile(body: unknown): ReconcileEntry[] | null {
+  const sales = (body as { sales?: unknown } | null)?.sales;
+  if (!Array.isArray(sales) || sales.length > MAX_RECONCILE) return null;
+  const out: ReconcileEntry[] = [];
+  for (const e of sales as Record<string, unknown>[]) {
+    if (typeof e !== "object" || e === null) return null;
+    const { sid, amountXof, claimedAt, confirmed } = e;
+    if (typeof sid !== "string" || !SID_RE.test(sid)) return null;
+    if (!Number.isSafeInteger(amountXof) || (amountXof as number) < 1 || (amountXof as number) > 0xffffffff) return null;
+    if (!Number.isSafeInteger(claimedAt) || (claimedAt as number) < 0) return null;
+    if (typeof confirmed !== "boolean") return null;
+    out.push({ sid, amountXof: amountXof as number, claimedAt: claimedAt as number, confirmed });
+  }
+  return out;
+}
 
 export function createApp(d: AppDeps) {
   const app = new Hono();
@@ -151,6 +172,38 @@ export function createApp(d: AppDeps) {
     });
     d.log.info("device_enrolled", { dev: hashId(id), backend: backend as string });
     return c.json({ deviceId: id, deviceSecretB64u: secret, baseUrl: d.baseUrl, ...sb });
+  });
+
+  // ---------- Device-authenticated API (A1) ----------
+  const unauthorized = (c: Context) => c.json({ error: "unauthorized", ...sb }, 401);
+  const badRequest = (c: Context) => c.json({ error: "bad request", ...sb }, 400);
+  /** Verifies the device signature over the raw body; returns the device and the parsed JSON body, or null. */
+  const deviceRequest = async (c: Context) => {
+    const body = new Uint8Array(await c.req.arrayBuffer());
+    const device = await verifyDeviceRequest({ method: c.req.method, path: c.req.path, header: (n) => c.req.header(n), body }, d);
+    if (!device) return null;
+    let json: unknown;
+    try {
+      json = JSON.parse(new TextDecoder().decode(body));
+    } catch {
+      json = undefined;
+    }
+    return { device, json };
+  };
+  const deviceLimit = bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.json({ error: "bad request", ...sb }, 413) });
+
+  app.post("/v1/sales/reconcile", deviceLimit, async (c) => {
+    if (!allowed(c, "device")) return c.json({ error: "too many requests", ...sb }, 429);
+    const r = await deviceRequest(c);
+    if (!r) {
+      d.log.info("device_auth_failed", { route: c.req.path });
+      return unauthorized(c);
+    }
+    const entries = parseReconcile(r.json);
+    if (!entries) return badRequest(c);
+    const results = await d.sales.reconcile(r.device, entries);
+    d.log.info("reconciled", { dev: hashId(r.device.id), n: entries.length });
+    return c.json({ results, ...sb });
   });
 
   // ---------- SANDBOX only ----------

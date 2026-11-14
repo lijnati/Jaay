@@ -48,6 +48,8 @@ export interface Repo {
   updateSale(deviceId: string, sid: string, from: SaleStatus, patch: Partial<SaleRow>): boolean;
   /** Sales whose invoice still needs a settlement check. */
   dueChecks(now: number, expiredSince: number, limit: number): SaleRow[];
+  /** Records a request nonce; false if this device already used it (replay). Expired nonces are purged. */
+  useNonce(deviceId: string, nonce: string, expiresAt: number, now: number): boolean;
   close(): void;
 }
 
@@ -111,6 +113,10 @@ export class SqliteRepo implements Repo {
       );
       CREATE INDEX IF NOT EXISTS sales_due ON sales (status, next_check_at);
       CREATE INDEX IF NOT EXISTS sales_sid ON sales (sid);
+      CREATE TABLE IF NOT EXISTS nonces (
+        device_id TEXT NOT NULL, nonce TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        PRIMARY KEY (device_id, nonce)
+      );
     `);
   }
 
@@ -178,6 +184,12 @@ export class SqliteRepo implements Repo {
       )
       .all(now, expiredSince, limit)
       .map(rowToSale);
+  }
+
+  useNonce(deviceId: string, nonce: string, expiresAt: number, now: number): boolean {
+    this.db.prepare("DELETE FROM nonces WHERE expires_at < ?").run(now);
+    const r = this.db.prepare("INSERT OR IGNORE INTO nonces (device_id, nonce, expires_at) VALUES (?,?,?)").run(deviceId, nonce, expiresAt);
+    return Number(r.changes) === 1;
   }
 
   close() {

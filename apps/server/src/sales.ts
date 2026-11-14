@@ -59,6 +59,22 @@ export type ReceiptView =
   | { kind: "pending" }
   | { kind: "paid"; amountXof: number; paidAt: number; code: string; late: boolean };
 
+export interface ReconcileEntry {
+  sid: string;
+  amountXof: number;
+  /** Device clock, advisory only (Hard rule 9). */
+  claimedAt: number;
+  /** The merchant typed a correct code on the device. */
+  confirmed: boolean;
+}
+export interface ReconcileResult {
+  sid: string;
+  status: "paid" | "paid_late" | "pending" | "expired" | "unknown";
+  amountXof: number | null;
+  settledAt: string | null;
+  mismatch: boolean;
+}
+
 export interface SaleDeps {
   repo: Repo;
   sealer: Sealer;
@@ -92,6 +108,11 @@ export class SaleService {
     return k;
   }
 
+  /** Device keys, or decoy keys for an unknown device so both paths do the same crypto work. */
+  keysOrDecoy(device: DeviceRow | undefined): Promise<DeviceKeys> {
+    return device ? this.keys(device) : this.decoyKeys;
+  }
+
   /** Serializes work per sale inside this process (single-instance deployment, documented). */
   private async locked<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.locks.get(key) ?? Promise.resolve();
@@ -109,7 +130,7 @@ export class SaleService {
     if (typeof token !== "string" || token.length === 0 || token.length > MAX_TOKEN_CHARS) throw new SaleRejected();
     const id = peekDeviceId(token);
     const device = id ? this.d.repo.getDevice(id) : undefined;
-    const keys = device ? await this.keys(device) : await this.decoyKeys;
+    const keys = await this.keysOrDecoy(device);
     let sale: Sale;
     try {
       sale = await this.decode(token, keys, device ? { minAmountXof: device.minXof, maxAmountXof: device.maxXof } : {});
@@ -307,6 +328,32 @@ export class SaleService {
     }
     if (row.status === "expired") return { kind: "generic" };
     return { kind: "pending" };
+  }
+
+  /**
+   * A2: what the server knows about a device's sales. Only this device's rows are visible; anything else is
+   * "unknown". Never returns codes or receipt tokens. A due settlement check runs first, so answers are fresh.
+   */
+  async reconcile(device: DeviceRow, entries: ReconcileEntry[]): Promise<ReconcileResult[]> {
+    const out: ReconcileResult[] = [];
+    for (const e of entries) {
+      let row = this.d.repo.getSale(device.id, e.sid);
+      if (row?.status === "invoiced" && row.nextCheckAt !== null && this.d.now() >= row.nextCheckAt) row = await this.check(row);
+      if (!row) {
+        out.push({ sid: e.sid, status: "unknown", amountXof: null, settledAt: null, mismatch: e.confirmed });
+        continue;
+      }
+      const settled = row.status === "paid" || row.status === "paid_late";
+      const status = settled || row.status === "expired" ? row.status : "pending";
+      out.push({
+        sid: e.sid,
+        status: status as ReconcileResult["status"],
+        amountXof: row.amountXof,
+        settledAt: settled && row.paidAt !== null ? new Date(row.paidAt).toISOString() : null,
+        mismatch: row.amountXof !== e.amountXof || (e.confirmed && !settled),
+      });
+    }
+    return out;
   }
 
   /** SANDBOX only: mark the fake invoice of an invoiced sale as paid, then check it. */

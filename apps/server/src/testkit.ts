@@ -1,4 +1,5 @@
 // Test helpers (not part of the bundle). Deterministic clock, fake FX fetch, fake NWC client, log capture.
+import { createHash } from "node:crypto";
 import { deriveKeys, encodeSale, secretFromString, type DeviceKeys } from "@jaay/protocol";
 import type { Config } from "./config";
 import type { NwcClientLike } from "./backends/nwc";
@@ -153,3 +154,32 @@ export async function sell(dev: Device, amountXof: number) {
 }
 
 export const q = (token: string) => encodeURIComponent(token);
+
+/**
+ * Reference client for device-authenticated requests (A1). The PWA implements the same canonical string.
+ * Overrides let tests break one element at a time.
+ */
+export async function signedPost(
+  srv: ReturnType<typeof makeServer>,
+  dev: Device,
+  path: string,
+  body: unknown,
+  o: Partial<{ ts: number; nonce: string; deviceId: string; signPath: string; signBody: string; keys: DeviceKeys; omit: string; ip: string }> = {},
+) {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  const ts = o.ts ?? srv.clock.t;
+  const nonce = o.nonce ?? Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url");
+  const deviceId = o.deviceId ?? dev.deviceId;
+  const bodyHash = createHash("sha256").update(o.signBody ?? text).digest("hex");
+  const canonical = ["jaay-auth-v1", "POST", o.signPath ?? path, deviceId, String(ts), nonce, bodyHash].join("\n");
+  const mac = await crypto.subtle.sign("HMAC", (o.keys ?? dev.keys).auth, new TextEncoder().encode(canonical));
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-jaay-device": deviceId,
+    "x-jaay-ts": String(ts),
+    "x-jaay-nonce": nonce,
+    "x-jaay-sig": Buffer.from(mac).toString("base64url"),
+  };
+  if (o.omit) delete headers[o.omit];
+  return srv.req(path, { method: "POST", headers, body: text, ip: o.ip });
+}
