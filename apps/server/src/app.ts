@@ -9,6 +9,7 @@ import { RateLimiter } from "./ratelimit";
 import { pickLang, RECEIPT_CSP, renderReceipt } from "./receipt";
 import type { Backend, Repo } from "./repo";
 import { verifyDeviceRequest } from "./deviceauth";
+import { servePos } from "./posstatic";
 import { secretPurpose, type ReconcileEntry, type SaleService } from "./sales";
 import type { Sealer } from "./seal";
 
@@ -29,6 +30,7 @@ export interface AppDeps {
   baseUrl: string;
   sandbox: boolean;
   enrollToken: string | null;
+  posDir: string | null;
   /** Client IP for rate limiting. Defaults to the socket address (see main.ts). */
   clientIp: (c: Context) => string;
   limits?: Partial<Record<Bucket, [number, number]>>;
@@ -238,6 +240,8 @@ export function createApp(d: AppDeps) {
       return c.json({ sandbox: true, status: ok ? "paid" : "ERROR" }, ok ? 200 : 404);
     });
   }
+
+  if (d.posDir) servePos(app, d.posDir);
 
   app.notFound((c) => c.json({ error: "not found", ...sb }, 404));
   app.onError((e, c) => {

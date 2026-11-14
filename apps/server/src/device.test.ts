@@ -1,4 +1,7 @@
 // A1 device authentication and A2 reconcile. Written before the implementation.
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { deriveConfirmCode, deriveKeys, generateDeviceSecret } from "@jaay/protocol";
 import { describe, expect, test } from "vitest";
 import { EXPIRY_GRACE_MS, INVOICE_EXPIRY_SEC } from "./sales";
@@ -355,5 +358,59 @@ describe("A5 invoice decode check", () => {
     const dev = await enroll(srv);
     const { cb } = { cb: await invoiced(srv, dev, 1000) };
     expect(srv.repo.getSale(dev.deviceId, cb.sid)!.invoice!.startsWith("lntbs")).toBe(true);
+  });
+});
+
+describe("A6 serving the PWA at /app/", () => {
+  const POS_CSP =
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  const dir = mkdtempSync(join(tmpdir(), "jaay-pos-"));
+  mkdirSync(join(dir, "assets"));
+  writeFileSync(join(dir, "index.html"), "<!doctype html><title>jaay</title>");
+  writeFileSync(join(dir, "sw.js"), "self.addEventListener('fetch',()=>{})");
+  writeFileSync(join(dir, "manifest.webmanifest"), "{}");
+  writeFileSync(join(dir, "assets", "index-abc123.js"), "console.log(1)");
+  writeFileSync(join(dir, "..", "jaay-secret.txt"), "outside");
+
+  test("index, service worker, manifest and hashed assets with the right types, caching and CSP", async () => {
+    const srv = makeServer({ cfg: { posDir: dir } });
+    const redirect = await srv.req("/app");
+    expect(redirect.status).toBe(301);
+    expect(redirect.headers.get("location")).toBe("/app/");
+    const index = await srv.req("/app/");
+    expect(index.status).toBe(200);
+    expect(index.headers.get("content-type")).toMatch(/^text\/html/);
+    expect(index.headers.get("content-security-policy")).toBe(POS_CSP);
+    expect(index.headers.get("cache-control")).toBe("no-cache");
+    const sw = await srv.req("/app/sw.js");
+    expect(sw.headers.get("content-type")).toMatch(/^text\/javascript/);
+    expect(sw.headers.get("cache-control")).toBe("no-cache");
+    expect((await srv.req("/app/manifest.webmanifest")).headers.get("content-type")).toMatch(/^application\/manifest\+json/);
+    const asset = await srv.req("/app/assets/index-abc123.js");
+    expect(asset.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(await asset.text()).toBe("console.log(1)");
+    // Client-side routes fall back to index.html; missing files with an extension are 404.
+    expect(await (await srv.req("/app/ledger")).text()).toContain("<title>jaay</title>");
+    expect((await srv.req("/app/missing.js")).status).toBe(404);
+  });
+
+  test("no path traversal out of JAAY_POS_DIR", async () => {
+    const srv = makeServer({ cfg: { posDir: dir } });
+    for (const p of ["/app/../jaay-secret.txt", "/app/..%2fjaay-secret.txt", "/app/%2e%2e/jaay-secret.txt", "/app/assets/..%2f..%2fjaay-secret.txt", "/app/%00"]) {
+      const res = await srv.req(p);
+      expect.soft(await res.text(), p).not.toContain("outside");
+    }
+  });
+
+  test("LNURL and receipt routes are unaffected; without JAAY_POS_DIR there is no /app", async () => {
+    const srv = makeServer({ cfg: { posDir: dir } });
+    expect((await srv.req("/lnurlp?p=x")).status).toBe(400);
+    expect((await srv.req(`/r/${"A".repeat(22)}`)).headers.get("content-security-policy")).not.toBe(POS_CSP);
+    expect((await makeServer().req("/app/")).status).toBe(404);
+  });
+
+  test("config refuses a JAAY_POS_DIR without index.html", () => {
+    expect(() => loadConfig({ JAAY_POS_DIR: tmpdir() + "/definitely-not-here" })).toThrow(ConfigError);
+    expect(loadConfig({ JAAY_POS_DIR: dir }).posDir).toBe(dir);
   });
 });

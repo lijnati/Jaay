@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { buildSaleLnurl } from "@jaay/protocol";
 import type { Network } from "./bolt11";
 
@@ -25,6 +27,8 @@ export interface Config {
   enrollToken: string | null;
   /** JAAY_NETWORK: the only network whose invoices are accepted (A5, Hard rule 1). */
   network: Network;
+  /** A6: JAAY_POS_DIR, the apps/pos build output served at /app/; null disables it. */
+  posDir: string | null;
 }
 
 export const DEFAULT_NWC_RELAYS = ["wss://relay.getalby.com/v1", "wss://relay2.getalby.com/v1"];
@@ -72,6 +76,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const network = (env.JAAY_NETWORK ?? "regtest") as Network;
   if (!["regtest", "signet", "testnet"].includes(network)) throw new ConfigError("JAAY_NETWORK must be regtest, signet or testnet");
 
+  const posDir = env.JAAY_POS_DIR || null;
+  if (posDir && !existsSync(join(posDir, "index.html"))) throw new ConfigError("JAAY_POS_DIR must contain index.html");
+
   return {
     port,
     baseUrl,
@@ -86,5 +93,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     nwcAllowedRelays: env.NWC_ALLOWED_RELAYS ? list(env.NWC_ALLOWED_RELAYS) : DEFAULT_NWC_RELAYS,
     enrollToken,
     network,
+    posDir,
   };
 }

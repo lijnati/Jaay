@@ -64,6 +64,7 @@ export function buildServer(cfg: Config, edges: Edges = {}) {
     baseUrl: cfg.baseUrl,
     sandbox: cfg.sandbox,
     enrollToken: cfg.enrollToken,
+    posDir: cfg.posDir,
     clientIp: edges.clientIp ?? (() => "unknown"),
     limits: edges.limits,
   });

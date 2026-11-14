@@ -25,6 +25,7 @@ export function testConfig(over: Partial<Config> = {}): Config {
     nwcAllowedRelays: ["ws://127.0.0.1:10547"],
     enrollToken: ENROLL_TOKEN,
     network: "regtest",
+    posDir: null,
     ...over,
   };
 }
