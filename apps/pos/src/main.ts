@@ -464,7 +464,7 @@ async function walletScreen(): Promise<HTMLElement> {
         h("p", { class: "total", id: "wallet-today", text: formatXof(d.totals.today.xof) }),
         h("p", { class: "hint", text: t("wallet.sats", { sats: sats(d.totals.today.msat), n: d.totals.today.count }) }),
         h("h2", { text: t("wallet.allTime") }),
-        h("p", { class: "total", text: formatXof(d.totals.allTime.xof) }),
+        h("p", { class: "total", id: "wallet-all", text: formatXof(d.totals.allTime.xof) }),
         h("p", { class: "hint", text: t("wallet.sats", { sats: sats(d.totals.allTime.msat), n: d.totals.allTime.count }) }),
       ),
     d &&

@@ -2,7 +2,7 @@
 // A Node-side customer plays the wallet over plain HTTP: GET lnurlp, GET cb, POST /sandbox/pay, GET /r/<token>.
 // SANDBOX only, no real bitcoin. Prints PASS/FAIL per check; exit code 1 if any check fails.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -14,6 +14,7 @@ import { decodeSale, deriveConfirmCode, deriveKeys, lnurlDecode, secretFromStrin
 
 const POS = fileURLToPath(new URL("..", import.meta.url));
 const SERVER = fileURLToPath(new URL("../../server", import.meta.url));
+const SIM = fileURLToPath(new URL("../../customer-sim", import.meta.url));
 const SCREENS = fileURLToPath(new URL("../../../docs/screens", import.meta.url));
 const DIST = join(POS, "dist");
 const PORT = 8797;
@@ -29,7 +30,8 @@ const step = async (id: string, check: string, fn: () => Promise<string | void>)
   try {
     rec(id, check, true, (await fn()) ?? "");
   } catch (e) {
-    rec(id, check, false, (e as Error).message.split("\n")[0]!.slice(0, 160));
+    const lines = (e as Error).message.split("\n");
+    rec(id, check, false, [lines[0], lines.find((l) => l.includes("waiting for"))].filter(Boolean).join(" | ").slice(0, 240));
   }
 };
 const assert = (c: unknown, msg: string) => {
@@ -41,9 +43,11 @@ const vite = (buildId: string) =>
 // ---------- build and start ----------
 const t0 = Date.now();
 vite("v1");
+execFileSync(process.execPath, [join(SIM, "node_modules/vite/bin/vite.js"), "build", "--logLevel", "error"], { cwd: SIM, stdio: "inherit" });
 execFileSync(process.execPath, [join(SERVER, "build.mjs")], { cwd: SERVER, stdio: "ignore" });
 const server = spawn(process.execPath, [join(SERVER, "dist/server.mjs")], {
-  env: { ...process.env, NODE_ENV: "development", SANDBOX: "1", PORT: String(PORT), BASE_URL: B, JAAY_POS_DIR: DIST },
+  // Fixed demo rate: the suite needs no internet. SANDBOX only, labeled "fixed demo rate".
+  env: { ...process.env, NODE_ENV: "development", SANDBOX: "1", PORT: String(PORT), JAAY_BASE_URL: B, JAAY_POS_DIR: DIST, JAAY_SIM_DIR: join(SIM, "dist"), JAAY_FX_FIXED_XOF_PER_BTC: "40000000" },
   stdio: ["ignore", "ignore", "inherit"],
 });
 const stopAll = async (ctx?: BrowserContext) => {
@@ -54,11 +58,8 @@ for (let i = 0; i < 50; i++) {
   if (await fetch(`${B}/healthz`).then((r) => r.ok, () => false)) break;
   await new Promise((r) => setTimeout(r, 200));
 }
-// Wait until the server has a live FX rate (it polls at start).
-for (let i = 0; i < 50; i++) {
-  if ((await (await fetch(`${B}/healthz`)).json()).fx === "ok") break;
-  await new Promise((r) => setTimeout(r, 200));
-}
+const fxLabel = (await (await fetch(`${B}/healthz`)).json()).fx;
+rec("fx", "server runs on the fixed demo rate, labeled as such", fxLabel === "fixed demo rate", fxLabel);
 
 // ---------- operator: enroll a sandbox device, build the enrollment payload ----------
 const en = (await (await fetch(`${B}/api/enroll`, {
@@ -97,8 +98,17 @@ async function sell(page: Page, amount: number): Promise<string> {
   await page.waitForSelector("#qr");
   return (await page.getAttribute("#qr", "data-qr"))!;
 }
+/** Cancel takes two taps; wait for the armed state between them so the second tap hits the re-rendered button. */
+async function cancelSale(page: Page): Promise<void> {
+  await page.click("#cancel");
+  await page.waitForFunction(() => document.querySelector("#cancel")?.textContent?.startsWith("Tap again"));
+  await page.click("#cancel");
+  await page.waitForSelector("#create");
+}
 async function typeCode(page: Page, code: string): Promise<string> {
   await page.fill("#code", code);
+  // Drop the previous result first, so we read the answer to THIS attempt, not the last one.
+  await page.evaluate(() => document.querySelector("#result")?.remove());
   await page.click("#check");
   await page.waitForSelector("#result");
   return (await page.textContent("#result"))!;
@@ -109,6 +119,117 @@ async function statusOf(page: Page, sid: string): Promise<string | null> {
 }
 const launch = (dir: string, offline = false) => chromium.launchPersistentContext(dir, { viewport: { width: 360, height: 780 }, locale: "en-US", offline });
 const sidOf = async (qr: string) => (await decodeSale((await tokenOf(qr)).token, keys, { minAmountXof: 1, maxAmountXof: 0xffffffff })).sid;
+
+
+try {
+  // The full judge flow, in its own fresh profile: no enrollment code, no wallet, no internet.
+  await step("judge", "judge flow: demo shop, 2 500 F sale, copy, simulator pays, receipt code, merchant confirms; demo data matches Wallet", async () => {
+    const jdir = mkdtempSync(join(tmpdir(), "jaay-judge-"));
+    const jctx = await chromium.launchPersistentContext(jdir, { viewport: { width: 360, height: 780 }, locale: "en-US" });
+    await jctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: B });
+    const app = jctx.pages()[0] ?? (await jctx.newPage());
+    try {
+      await app.goto(`${B}/app/`);
+      await app.click("#demo-shop");
+      await app.waitForSelector("#enroll-host");
+      assert((await app.textContent("#enroll-host")) === HOST, "host not shown before enrolling the demo shop");
+      assert((await app.inputValue("#enroll-input")) === "", "the secret was put in the visible text box");
+      await app.check("#enroll-check");
+      await app.click("#enroll-submit");
+      await app.waitForSelector("#tab-sell");
+      const qr = await sell(app, 2500);
+      assert(await app.isVisible("#copy"), "copy helper missing in sandbox");
+      await app.click("#copy");
+      const copied = await app.evaluate(() => navigator.clipboard.readText());
+      assert(copied === qr, "clipboard differs from the QR string");
+      await app.screenshot({ path: join(SCREENS, "sell.png") });
+      const simHref = (await app.getAttribute("#open-sim", "href"))!;
+      assert(simHref === `/sim/?lnurl=${encodeURIComponent(qr)}`, "simulator link");
+
+      const sim = await jctx.newPage();
+      await sim.goto(`${B}${simHref}`);
+      await sim.waitForSelector("#step1");
+      assert((await sim.textContent("#sandbox")) === "SANDBOX customer wallet (simulator, not a real wallet)", "simulator label");
+      const desc = (await sim.textContent("#desc"))!;
+      assert(desc.includes("2500 XOF") && desc.includes("fixed demo rate"), `description "${desc}"`);
+      assert((await sim.textContent("#msat"))!.includes("6,250 sats"), "amount");
+      await sim.screenshot({ path: join(SCREENS, "sim-request.png") });
+      const fallback = /https?:\/\/\S+\/r\/[A-Za-z0-9_-]{22}/.exec(desc)![0];
+      const receipt = await jctx.newPage();
+      await receipt.goto(fallback);
+      assert(!(await receipt.content()).includes('class="code"'), "code visible before payment");
+      await receipt.screenshot({ path: join(SCREENS, "receipt-before.png") });
+
+      await sim.click("#pay");
+      await sim.waitForSelector("#step3");
+      const link = (await sim.getAttribute("#success-link", "href"))!;
+      assert(new URL(link).host === HOST, "success link host");
+      assert(sim.context().pages().length === 3, "the simulator opened something by itself");
+      await sim.screenshot({ path: join(SCREENS, "sim-paid.png"), fullPage: true });
+      await receipt.goto(link);
+      const code = /class="code">(\d{6})</.exec(await receipt.content())?.[1];
+      assert(code, "no code after payment");
+      await receipt.screenshot({ path: join(SCREENS, "receipt-after.png") });
+
+      await app.bringToFront();
+      await app.click("#to-confirm");
+      assert((await typeCode(app, code!)) === "Payment confirmed.", "confirm");
+      await app.click("#next");
+
+      await app.click("#tab-settings");
+      await app.click("#demo-load");
+      await app.waitForSelector("#demo-note");
+      assert((await app.textContent("#demo-note")) === "12 demo sales loaded.", (await app.textContent("#demo-note"))!);
+      await app.click("#tab-ledger");
+      await app.click("#reconcile");
+      // Wait for the result itself (the confirmed 2 500 F sale becomes paid), not for any "Checked" message.
+      await app.waitForSelector('li[data-status="confirmed"]', { state: "detached", timeout: 15_000 });
+      const ledgerSum = await app.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((r) => {
+          const o = indexedDB.open("jaay-pos");
+          o.onsuccess = () => r(o.result);
+        });
+        const all = await new Promise<{ amountXof: number; status: string }[]>((r) => {
+          const q = db.transaction("sales").objectStore("sales").getAll();
+          q.onsuccess = () => r(q.result);
+        });
+        return all.filter((s) => s.status === "paid" || s.status === "paid_late").reduce((a, s) => a + s.amountXof, 0);
+      });
+      await app.click("#tab-wallet");
+      await app.waitForSelector("#wallet-all");
+      await app.waitForFunction((want) => document.querySelector("#wallet-all")?.textContent?.replace(/\D/g, "") === String(want), ledgerSum, { timeout: 10_000 });
+      await app.screenshot({ path: join(SCREENS, "wallet.png"), fullPage: true });
+      assert(ledgerSum === 2500 + 80850, `ledger paid total ${ledgerSum}`);
+      return `code typed, confirmed; Wallet all time ${ledgerSum} F = ledger paid total`;
+    } finally {
+      await jctx.close();
+    }
+  });
+
+  await step("manifest", "manifest parses; every icon resolves with the declared size and type", async () => {
+    const m = (await (await fetch(`${B}/app/manifest.webmanifest`)).json()) as {
+      id: string; scope: string; start_url: string; display: string; short_name: string; lang: string; theme_color: string; background_color: string;
+      icons: { src: string; sizes: string; type: string; purpose: string }[];
+    };
+    assert(m.id === "/app/" && m.scope === "/app/" && m.start_url === "/app/" && m.display === "standalone" && m.short_name === "Jaay", "manifest fields");
+    assert(m.lang && m.theme_color && m.background_color, "colors or lang missing");
+    const purposes = new Set(m.icons.map((i) => i.purpose));
+    assert(purposes.has("any") && purposes.has("maskable"), "icon purposes");
+    const seen: string[] = [];
+    for (const icon of m.icons) {
+      const r = await fetch(`${B}${icon.src}`);
+      assert(r.ok && (r.headers.get("content-type") ?? "").startsWith(icon.type), `${icon.src} ${r.status} ${r.headers.get("content-type")}`);
+      if (icon.type === "image/png") {
+        const png = PNG.sync.read(Buffer.from(await r.arrayBuffer()));
+        assert(`${png.width}x${png.height}` === icon.sizes, `${icon.src} is ${png.width}x${png.height}, declared ${icon.sizes}`);
+      }
+      seen.push(`${icon.src.split("/").pop()} ${icon.sizes} ${icon.purpose}`);
+    }
+    return seen.join(", ");
+  });
+} catch (e) {
+  rec("judge", "setup", false, String(e));
+}
 
 const profile = mkdtempSync(join(tmpdir(), "jaay-pos-e2e-"));
 let ctx = await launch(profile);
@@ -172,9 +293,7 @@ try {
     assert(url.origin === B && url.pathname === "/lnurlp", "QR points elsewhere");
     const s = await decodeSale(token, keys, { minAmountXof: 1, maxAmountXof: 0xffffffff });
     assert(s.amountXof === 2500, "amount in token");
-    await page.screenshot({ path: join(SCREENS, "sell.png") });
-    await page.click("#cancel");
-    await page.click("#cancel");
+    await cancelSale(page);
     return `QR v${d!.version}, ${d!.data.length} chars, mode ${[...new Set(d!.chunks.map((c) => c.type))].join("+")}`;
   });
 
@@ -257,7 +376,6 @@ try {
     assert(ro === "Receive only. This app and the server cannot spend.", ro ?? "");
     assert(sm?.endsWith(": none"), sm ?? "");
     assert((await page.locator("text=/send|pay out|withdraw/i").count()) === 0, "a send control exists");
-    await page.screenshot({ path: join(SCREENS, "wallet.png") });
     return (await page.textContent("#wallet-today"))!.replace(/ /g, " ");
   });
 
@@ -273,8 +391,7 @@ try {
     assert(st === "paid", `ledger after restart: ${st}`);
     const qr = await sell(page, 900);
     assert(qr.startsWith("LIGHTNING:LNURL1"), "no QR");
-    await page.click("#cancel");
-    await page.click("#cancel");
+    await cancelSale(page);
     return "app shell from the service worker, ledger intact";
   });
 
@@ -297,8 +414,7 @@ try {
     assert((await page.textContent("#version")) === "Version v1", "already v2?");
     await page.click("#tab-sell");
     assert((await page.getAttribute("#qr", "data-qr")) === qr, "the open sale was interrupted");
-    await page.click("#cancel");
-    await page.click("#cancel");
+    await cancelSale(page);
     await page.click("#tab-settings");
     await page.waitForSelector("#update:not([disabled])");
     await Promise.all([page.waitForEvent("load"), page.click("#update")]);
@@ -328,6 +444,14 @@ await step("f", "first load under 150 KB gzipped (HTML, JS, CSS, SW, manifest, i
   }
   assert(gz < 150 * 1024, `${(gz / 1024).toFixed(1)} KB`);
   return `${(gz / 1024).toFixed(1)} KB total (${parts.join(", ")})`;
+});
+
+await step("f2", "customer simulator under 40 KB gzipped (HTML, JS, CSS)", async () => {
+  const dir = join(SIM, "dist");
+  const files = ["index.html", ...readdirSync(join(dir, "assets")).map((f) => `assets/${f}`)];
+  const gz = files.reduce((a, f) => a + gzipSync(readFileSync(join(dir, f)), { level: 9 }).length, 0);
+  assert(gz < 40 * 1024, `${(gz / 1024).toFixed(1)} KB`);
+  return `${(gz / 1024).toFixed(1)} KB total`;
 });
 
 console.table(rows.map(({ id, check, ok }) => ({ id, ok: ok ? "PASS" : "FAIL", check })));
