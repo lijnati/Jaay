@@ -14,6 +14,7 @@ input { min-height: 48px; min-width: 48px; }
   outline-offset: 0;
   box-shadow: 0 0 0 5px #000;
 }
+.btn.secondary:focus-visible, .btn.danger:focus-visible { outline: 3px solid #000; outline-offset: 2px; box-shadow: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
