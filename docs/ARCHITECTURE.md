@@ -204,3 +204,55 @@ The PWA signs calls with the device auth key: HMAC-SHA256 over `jaay-auth-v1`, m
 - `POST /v1/wallet/summary`: server-computed paid totals, the last 50 paid sales, and the backend's granted methods checked for spend capability on every call (if one appears after enrollment, `receiveOnly` turns false and an error is logged). The balance appears only when NWC grants `get_balance`.
 
 Other Block A changes: non-sandbox enrollment needs `JAAY_ENROLL_TOKEN` as a Bearer token; every returned invoice is decoded and checked (network `JAAY_NETWORK`, amount, payment hash, description hash, not expired) before it reaches a wallet; and the PWA build is served at `/app/` with a self-only CSP when `JAAY_POS_DIR` is set.
+
+## Merchant PWA (M3)
+
+`apps/pos` is a Vite build of plain TypeScript and DOM (no UI framework), served by the server at `/app/` on the same origin as the device API. First load is 21.8 KB gzipped (HTML, JS, CSS, service worker, manifest, icons), measured by the e2e run against a 150 KB budget. Security specifics are in [SECURITY_PWA.md](SECURITY_PWA.md).
+
+### Modules
+
+| File | Role |
+|---|---|
+| `ledger.ts` | The sale state machine: one pure transition table, the only place statuses change. |
+| `confirm.ts` | Confirm-code check through the protocol, 3 attempts, counter persisted before evaluation. |
+| `enroll.ts` | Strict payload parsing, fragment handling, origin check, key derivation and storage. |
+| `reconcile.ts` | Which sales to send, signed batches of 200, all-or-nothing merge. |
+| `auth.ts` | Device request signing (same canonical string as the server). |
+| `db.ts` | IndexedDB: `kv` (config, CryptoKeys, cached wallet summary, active sale) and `sales` (ledger). |
+| `i18n.ts`, `money.ts`, `qr.ts` | One FR/EN catalog, XOF formatting ("5 000 F"), QR at level M from spike S3. |
+| `main.ts` | Screens: enroll, sell, confirm, ledger, wallet, settings. |
+| `sw-template.js` | Service worker, scope `/app/`, cache-first shell, update on tap. |
+
+### Ledger state machine
+
+Device events: `confirm` (right code), `fail` (wrong code, attempts left), `lock` (third wrong code), `cancel`, `expire` (local sale window over, display only). Server events come from reconcile: `srv_paid`, `srv_paid_late`, `srv_pending`, `srv_expired`, `srv_unknown`, and `srv_mismatch` (the server's amount differs from the device's, which overrides the status). Any pair not in the table is refused; the tests cover all 99 pairs.
+
+| From | Device events | Server events |
+|---|---|---|
+| open | confirm: confirmed; fail: open; lock: locked; cancel: cancelled; expire: expired | paid: paid; paid_late: paid_late; pending: open; expired: unpaid; unknown: open; mismatch: mismatch |
+| confirmed | none | paid: paid; paid_late: paid_late; pending: confirmed; expired: **mismatch**; unknown: **mismatch**; mismatch: mismatch |
+| locked | cancel: cancelled | paid: paid; paid_late: paid_late; pending: locked; expired: unpaid; unknown: unpaid; mismatch: mismatch |
+| cancelled | none | paid or paid_late: **mismatch** (refund needed); pending, expired, unknown: cancelled; mismatch: mismatch |
+| expired | confirm: confirmed; fail: expired; lock: locked; cancel: cancelled | as open, except unknown: unpaid |
+| paid | none | paid: paid |
+| paid_late | none | paid_late: paid_late |
+| unpaid | none | paid: paid; paid_late: paid_late; others: unpaid; mismatch: mismatch |
+| mismatch | none | mismatch: mismatch |
+
+`paid`, `paid_late`, `unpaid` and `mismatch` are reachable only from server events. A locked, cancelled, unpaid or mismatched sale can never become confirmed. "Confirmed but the server shows no payment" is the case of a leaked or guessed code, and becomes `mismatch`.
+
+### Reconcile flow
+
+1. Triggers: app start when online, the browser `online` event, and the manual "Check with server" button.
+2. Sales sent: every non-final sale (not paid, paid_late or mismatch) from the last 7 days, in batches of 200, each a signed `POST /v1/sales/reconcile` with `{sid, amountXof, claimedAt, confirmed}`.
+3. A batch response must match the batch exactly (same length, same order, same sids, known statuses) or nothing is applied.
+4. Each result becomes one server event and goes through the transition table; the server's view (status, amount, settlement time, mismatch flag) is stored on the sale.
+5. On failure the ledger is untouched and the call is retried with backoff (5 s doubling to 5 minutes). Selling is never blocked.
+
+### Key storage
+
+The enrollment secret is turned into three non-extractable CryptoKeys (`deriveKeys`) and only those objects are stored, in IndexedDB; the secret bytes are zeroed and the secret is never persisted (tested by scanning IndexedDB and localStorage). Keys cannot be exported but can be used by any script in the origin, so the strict CSP at `/app/` is part of the security model (see [SECURITY_PWA.md](SECURITY_PWA.md)).
+
+### Offline and updates
+
+The service worker precaches the shell and serves it cache-first; requests outside `/app/` (device API, `/lnurlp`, `/r/`) always go to the network. A new version installs in the background and waits; Settings offers "Update now" only when no sale is open on screen, then the page reloads once into the new version. Verified in Chromium by the e2e run: offline reload, cold start with the browser closed and reopened offline, and the update flow with an open sale.
