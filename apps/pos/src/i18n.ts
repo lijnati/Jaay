@@ -106,6 +106,19 @@ const en = {
   "time.min": "{n} min",
   "time.h": "{n} h",
   "time.d": "{n} d",
+
+  "demo.tryShop": "Try the sandbox demo shop",
+  "demo.tryHint": "Creates a SANDBOX shop on this server for this phone. Payments are simulated, no real bitcoin.",
+  "demo.copy": "Copy payment string",
+  "demo.copied": "Payment string copied.",
+  "demo.openSim": "Open customer simulator",
+  "demo.title": "Demo data (SANDBOX)",
+  "demo.load": "Load demo data",
+  "demo.remove": "Remove demo data",
+  "demo.loaded": "{n} demo sales loaded.",
+  "demo.removed": "{n} demo sales removed.",
+  "demo.failed": "Could not reach the server.",
+  "demo.badge": "demo",
 };
 
 export type Key = keyof typeof en;
@@ -217,6 +230,19 @@ const fr: Record<Key, string> = {
   "time.min": "{n} min",
   "time.h": "{n} h",
   "time.d": "{n} j",
+
+  "demo.tryShop": "Essayer la boutique de démo SANDBOX",
+  "demo.tryHint": "Crée une boutique SANDBOX sur ce serveur pour ce téléphone. Paiements simulés, aucun vrai bitcoin.",
+  "demo.copy": "Copier la chaîne de paiement",
+  "demo.copied": "Chaîne de paiement copiée.",
+  "demo.openSim": "Ouvrir le simulateur client",
+  "demo.title": "Données de démo (SANDBOX)",
+  "demo.load": "Charger les données de démo",
+  "demo.remove": "Supprimer les données de démo",
+  "demo.loaded": "{n} ventes de démo chargées.",
+  "demo.removed": "{n} ventes de démo supprimées.",
+  "demo.failed": "Serveur injoignable.",
+  "demo.badge": "démo",
 };
 
 export const CATALOG = { en, fr } as const;

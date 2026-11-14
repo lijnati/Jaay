@@ -1,4 +1,6 @@
-# SANDBOX: fake payments only, no real bitcoin. For a real regtest or signet backend see apps/server/.env.example.
+# SANDBOX demo: simulated payments, no real bitcoin, a fixed demo rate (not a market rate).
+# `docker compose up`, then open http://localhost:8787/app/ (merchant) and http://localhost:8787/sim/ (customer simulator).
+# NOT RUN: Docker is not installed on the machine this was written on. `pnpm demo` is the tested equivalent.
 services:
   server:
     build:
@@ -9,9 +11,10 @@ services:
       - "8787:8787"
     restart: unless-stopped
     environment:
-      # Sandbox demo uses an ephemeral master key and in-memory DB so it needs no secrets; data resets on restart.
+      # Ephemeral master key and in-memory database: no secrets needed, data resets on restart.
       NODE_ENV: development
       SANDBOX: "1"
-      BASE_URL: http://localhost:8787
+      JAAY_FX_FIXED_XOF_PER_BTC: "40000000"
+      JAAY_BASE_URL: http://localhost:8787
       DB_PATH: ":memory:"
       PORT: "8787"

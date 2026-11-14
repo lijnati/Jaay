@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "icons": "node scripts/icons.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "vite build",
@@ -14,6 +15,7 @@
     "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
     "@types/node": "^24.19.2",
     "@types/pngjs": "^6.0.5",
     "fake-indexeddb": "6.2.6",

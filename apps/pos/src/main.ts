@@ -7,6 +7,7 @@ import { tryConfirm, MAX_ATTEMPTS } from "./confirm";
 import { allSales, getConfig, getKeys, getKv, getSale, putConfig, putKv, putSale, wipe, type DeviceConfig, type SaleRec } from "./db";
 import { enrollDevice, parseEnrollPayload, readEnrollFragment, type EnrollPayload } from "./enroll";
 import { getLang, initLang, setLang, t, type Key, type Lang } from "./i18n";
+import { loadDemo, removeDemo, sandboxHelpers } from "./demo";
 import { transition, type LedgerStatus } from "./ledger";
 import { formatXof } from "./money";
 import { renderQr } from "./qr";
@@ -39,6 +40,9 @@ const state: {
   confirmMsg: { kind: "ok" | "err"; key: Key } | null;
   armed: string | null;
   updateWaiting: boolean;
+  /** From GET /healthz: is this server a SANDBOX server (offers the demo shop)? */
+  serverSandbox: boolean;
+  note: { kind: "ok" | "err"; text: string } | null;
 } = {
   screen: "sell",
   digits: "",
@@ -51,6 +55,8 @@ const state: {
   confirmMsg: null,
   armed: null,
   updateWaiting: false,
+  serverSandbox: false,
+  note: null,
 };
 
 // ---------- tiny DOM helper ----------
@@ -183,10 +189,31 @@ function enrollScreen(): HTMLElement {
       render();
     }
   });
+  const demoShop = async () => {
+    try {
+      const res = await fetch("/api/enroll", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ label: "Boutique demo Jaay", backend: "sandbox", connection: "", minXof: 50, maxXof: 500000 }),
+      });
+      const j = (await res.json()) as { deviceId?: string; deviceSecretB64u?: string; baseUrl?: string; sandbox?: boolean };
+      // Through the normal parser and the normal confirm card. The secret is never shown in the text box.
+      state.enrollParsed = parseEnrollPayload(
+        JSON.stringify({ deviceId: j.deviceId, deviceSecretB64u: j.deviceSecretB64u, baseUrl: j.baseUrl, minXof: 50, maxXof: 500000, label: "Boutique demo Jaay", sandbox: j.sandbox === true }),
+      );
+      state.enrollError = state.enrollParsed ? null : "enroll.invalid";
+    } catch {
+      state.enrollError = "enroll.invalid";
+    }
+    render();
+  };
   return h(
     "section",
     {},
     h("h1", { text: t("enroll.title") }),
+    state.serverSandbox &&
+      !p &&
+      h("div", { class: "card" }, h("button", { class: "btn", id: "demo-shop", text: t("demo.tryShop"), onclick: () => void demoShop() }), h("p", { class: "hint", text: t("demo.tryHint") })),
     h("p", { class: "hint", text: t("enroll.hint") }),
     input,
     h("button", {
@@ -236,6 +263,29 @@ function keypad(): HTMLElement {
   );
 }
 
+/** SANDBOX only (sandboxHelpers returns null otherwise): copy the payment string, open the customer simulator. */
+function sandboxButtons(helpers: ReturnType<typeof sandboxHelpers>): (HTMLElement | null)[] {
+  if (!helpers) return [];
+  return [
+    h("div", { class: "row" },
+      h("button", {
+        class: "btn secondary",
+        id: "copy",
+        text: t("demo.copy"),
+        onclick: async () => {
+          await navigator.clipboard.writeText(helpers.copy).then(
+            () => (state.note = { kind: "ok", text: t("demo.copied") }),
+            () => (state.note = { kind: "err", text: helpers.copy }),
+          );
+          render();
+        },
+      }),
+      h("a", { class: "btn secondary", id: "open-sim", href: helpers.simUrl, target: "_blank", rel: "noopener noreferrer", text: t("demo.openSim") }),
+    ),
+    state.note && h("p", { class: `msg ${state.note.kind}`, id: "note", role: "status", text: state.note.text }),
+  ];
+}
+
 async function sellScreen(): Promise<HTMLElement> {
   const c = state.config!;
   let rec = state.sid ? await getSale(state.sid) : undefined;
@@ -274,6 +324,7 @@ async function sellScreen(): Promise<HTMLElement> {
     h("div", { class: "qrwrap" }, canvas),
     h("p", { class: "host", id: "host", text: t("sell.payTo", { host: host() }) }),
     count,
+    ...sandboxButtons(sandboxHelpers(c, sale.qr)),
     h("button", { class: "btn", id: "to-confirm", text: t("sell.enterCode"), onclick: () => ((state.screen = "confirm"), render()) }),
     // Leaves this sale open in the ledger (several sales can be in flight) and goes back to the keypad.
     h("button", { class: "btn secondary", id: "new-sale", text: t("sell.newSale"), onclick: async () => (await setActive(null), render()) }),
@@ -367,6 +418,7 @@ async function ledgerScreen(): Promise<HTMLElement> {
                 h("div", { class: "amt", text: formatXof(s.amountXof) }),
                 h("div", { class: "when", text: new Date(s.createdAt).toLocaleString() }),
                 note && h("div", { class: "hint", text: note }),
+                s.demo && h("div", { class: "hint", text: `${t("demo.badge")}: ${s.demoLabel ?? ""}` }),
               ),
               openable
                 ? h("button", { class: `st st-${s.status}`, text: t(`status.${s.status}` as Key), onclick: async () => ((state.screen = "confirm"), await setActive(s.sid), render()) })
@@ -470,6 +522,14 @@ async function settingsScreen(): Promise<HTMLElement> {
     h("p", { class: "hint", id: "version", text: t("settings.version", { v: __BUILD__ }) }),
     h("p", { class: "hint", id: "update-status", text: !state.updateWaiting ? t("settings.upToDate") : busy ? t("settings.updateAfterSale") : t("settings.updateReady") }),
     state.updateWaiting && h("button", { class: "btn", id: "update", disabled: busy, text: t("settings.update"), onclick: () => void applyUpdate() }),
+    ...(c.sandbox
+      ? [
+          h("h2", { text: t("demo.title") }),
+          h("button", { class: "btn secondary", id: "demo-load", text: t("demo.load"), onclick: () => void demoAction(loadDemo, "demo.loaded") }),
+          h("button", { class: "btn secondary", id: "demo-remove", text: t("demo.remove"), onclick: () => void demoAction(removeDemo, "demo.removed") }),
+          state.note && h("p", { class: `msg ${state.note.kind}`, id: "demo-note", role: "status", text: state.note.text }),
+        ]
+      : []),
     h("button", {
       class: "btn danger",
       id: "wipe",
@@ -488,12 +548,26 @@ async function settingsScreen(): Promise<HTMLElement> {
   );
 }
 
+async function demoAction(fn: typeof loadDemo, ok: Key): Promise<void> {
+  try {
+    const n = await fn({ fetchFn: fetch.bind(globalThis), config: state.config!, keys: state.keys!, now: now() });
+    state.note = { kind: "ok", text: t(ok, { n }) };
+    void loadWallet();
+  } catch {
+    state.note = { kind: "err", text: t("demo.failed") };
+  }
+  render();
+}
+
 // ---------- shell ----------
 let renderSeq = 0;
+let lastScreen: Screen | null = null;
 async function render(): Promise<void> {
   const seq = ++renderSeq;
   clearInterval(ticker);
   if (!state.config || !state.keys) state.screen = "enroll";
+  if (state.screen !== lastScreen) state.note = null;
+  lastScreen = state.screen;
   if (state.screen !== "settings" && state.armed === "wipe") state.armed = null;
   const view =
     state.screen === "enroll"
@@ -561,6 +635,12 @@ async function boot(): Promise<void> {
     state.enrollText = fragment;
     state.enrollParsed = parseEnrollPayload(fragment);
     state.enrollError = state.enrollParsed ? null : "enroll.invalid";
+  }
+  if (!state.config && navigator.onLine) {
+    state.serverSandbox = await fetch("/healthz")
+      .then((r) => r.json())
+      .then((j: { sandbox?: unknown }) => j.sandbox === true)
+      .catch(() => false);
   }
   const active = await getKv<string | null>("active");
   if (active) state.sid = active;

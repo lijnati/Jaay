@@ -35,6 +35,9 @@ export interface SaleRec {
   /** The QR content (public: the token is encrypted). Kept so an open sale survives a reload. */
   qr: string;
   server?: ServerView;
+  /** SANDBOX demo data (Settings > Load demo data); removable in one tap. */
+  demo?: boolean;
+  demoLabel?: string;
 }
 
 const DB_NAME = "jaay-pos";
@@ -74,6 +77,7 @@ export const putKv = (key: string, v: unknown) => run("kv", "readwrite", (s) => 
 
 export const getSale = (sid: string) => run<SaleRec | undefined>("sales", "readonly", (s) => s.get(sid));
 export const putSale = (r: SaleRec) => run("sales", "readwrite", (s) => s.put(r));
+export const deleteSale = (sid: string) => run("sales", "readwrite", (s) => s.delete(sid));
 export const allSales = async () => (await run<SaleRec[]>("sales", "readonly", (s) => s.getAll())).sort((a, b) => b.createdAt - a.createdAt);
 
 /** Wipe device: removes keys, config, cached data and the whole ledger. */

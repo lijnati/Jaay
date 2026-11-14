@@ -70,3 +70,4 @@ label.check input[type=checkbox] { width: 28px; height: 28px; }
 .total { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; }
+a.btn { display: flex; align-items: center; justify-content: center; box-sizing: border-box; text-align: center; text-decoration: none; }

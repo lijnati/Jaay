@@ -52,7 +52,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const port = Number(env.PORT ?? 8787);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new ConfigError("PORT must be 1..65535");
 
-  const baseUrl = (env.BASE_URL ?? (production ? "" : `http://localhost:${port}`)).replace(/\/+$/, "");
+  // JAAY_BASE_URL is the documented name for hosts; BASE_URL stays accepted.
+  const baseUrl = (env.JAAY_BASE_URL ?? env.BASE_URL ?? (production ? "" : `http://localhost:${port}`)).replace(/\/+$/, "");
   try {
     // Same rules the device uses: https, or http only for localhost, 127.0.0.1 and .onion.
     buildSaleLnurl(baseUrl, "A");
