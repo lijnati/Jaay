@@ -296,7 +296,7 @@ describe("security item 4: receipt gating over every status", () => {
   test("French by default, English via Accept-Language", async () => {
     const { srv, out } = await reachEveryStatus();
     const rt = out.find((o) => o.status === "invoiced")!.rt;
-    expect(await (await srv.req(`/r/${rt}`)).text()).toContain("Pas encore paye");
+    expect(await (await srv.req(`/r/${rt}`)).text()).toContain("Pas encore payé");
     expect(await (await srv.req(`/r/${rt}`, { headers: { "accept-language": "en-GB,en;q=0.9" } })).text()).toContain("Not paid yet");
   });
 });

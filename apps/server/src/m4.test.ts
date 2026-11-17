@@ -152,6 +152,33 @@ describe("receipt polish", () => {
     expect(pending).not.toMatch(/class="code"/);
   });
 
+  test("pending page: label, XOF amount, waiting message and server-time last check, in EN and FR; no code", async () => {
+    const srv = makeServer({ cfg: { fxFixedXofPerBtc: FIXED } });
+    const dev = await enroll(srv, { label: "Boutique Awa" });
+    const s = await invoice(srv, dev, 2500);
+    const clock = new Date(srv.clock.t).toISOString().slice(11, 19);
+    const fr = await (await srv.req(`/r/${s.rt}`)).text();
+    const en = await (await srv.req(`/r/${s.rt}`, { headers: { "accept-language": "en" } })).text();
+    expect(fr).toContain("2 500 XOF");
+    expect(fr).toContain("En attente de votre paiement. Si vous avez déjà payé, cette page se met à jour dans quelques secondes.");
+    expect(fr).toContain(`Dernière vérification : ${clock} UTC`);
+    expect(en).toContain("Waiting for your payment. If you already paid, this updates in a few seconds.");
+    expect(en).toContain(`Last checked: ${clock} UTC`);
+    for (const html of [fr, en]) {
+      expect(html).toContain('<meta http-equiv="refresh" content="5">');
+      expect(html).not.toMatch(/class="(code|vh)"/);
+    }
+  });
+
+  test("paid page: code grouped in threes for reading, plain digits for screen readers, still the largest text; keep-page note", () => {
+    const fr = renderReceipt(paid("Boutique Awa"), "fr", false);
+    expect(fr).toContain('<p class="code"><span aria-hidden="true">123 456</span><span class="vh">123456</span></p>');
+    expect(fr).toContain("Gardez cette page. C'est votre reçu.");
+    expect(renderReceipt(paid("x"), "en", false)).toContain("Keep this page. It is your receipt.");
+    const sizes = [...fr.matchAll(/font:700 (\d+)px|font-size:(\d+)px/g)].map((m) => Number(m[1] ?? m[2]));
+    expect(/\.code\{font:700 (\d+)px/.exec(fr)![1]).toBe(String(Math.max(...sizes)));
+  });
+
   test("a hostile label stored directly in the database is still escaped on the live page", async () => {
     const srv = makeServer({ cfg: { fxFixedXofPerBtc: FIXED } });
     const dev = await enroll(srv);

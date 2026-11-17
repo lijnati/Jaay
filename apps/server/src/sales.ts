@@ -58,7 +58,7 @@ export interface CallbackResponse {
 }
 export type ReceiptView =
   | { kind: "generic" }
-  | { kind: "pending"; label: string }
+  | { kind: "pending"; label: string; amountXof: number; /** server clock */ checkedAt: number }
   | { kind: "paid"; amountXof: number; paidAt: number; code: string; late: boolean; label: string; msat: string; fixedRate: boolean };
 
 export interface ReconcileEntry {
@@ -156,7 +156,7 @@ export class SaleService {
   metadata(row: SaleRow, device: DeviceRow): string {
     const tag = device.backend === "sandbox" ? "[SANDBOX] " : "";
     const rate = row.quoteSource === "fixed-demo" ? " Taux de demo fixe / fixed demo rate." : "";
-    return JSON.stringify([["text/plain", `${tag}Jaay: ${row.amountXof} XOF.${rate} Recu / receipt: ${this.receiptUrl(row)}`]]);
+    return JSON.stringify([["text/plain", `${tag}Jaay: ${row.amountXof} XOF.${rate} Reçu / receipt: ${this.receiptUrl(row)}`]]);
   }
 
   private payRequest(token: string, row: SaleRow, device: DeviceRow): PayRequest {
@@ -343,7 +343,7 @@ export class SaleService {
       };
     }
     if (row.status === "expired") return { kind: "generic" };
-    return { kind: "pending", label: device.label };
+    return { kind: "pending", label: device.label, amountXof: row.amountXof, checkedAt: this.d.now() };
   }
 
   /**
@@ -436,7 +436,7 @@ export class SaleService {
       receiveOnly: backend.spendMethods === null || backend.spendMethods.length === 0,
       backend,
       totals: { today: total(paid.filter((r) => (r.paidAt ?? 0) >= dayStart)), allTime: total(paid) },
-      recent: paid.slice(0, 50).map((r) => ({ sid: r.sid.slice(0, 6), amountXof: r.amountXof, paidAt: new Date(r.paidAt!).toISOString(), status: r.status })),
+      recent: paid.slice(0, 50).map((r) => ({ sid: r.sid.slice(0, 6), amountXof: r.amountXof, paidAt: new Date(r.paidAt!).toISOString(), status: r.status, demo: r.demo === 1 })),
       generatedAt: new Date(now).toISOString(),
     };
   }
