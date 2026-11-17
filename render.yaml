@@ -1,0 +1,40 @@
+# Render Blueprint for the public SANDBOX demo (simulated payments, no real bitcoin).
+# Free plan: no persistent disk, sleeps after 15 minutes idle. The SANDBOX database lives in /tmp and resets on
+# every restart; a phone set up before a restart taps Settings > Wipe device and uses the demo shop again.
+services:
+  - type: web
+    name: jaay-demo
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --production=false && pnpm build
+    startCommand: node apps/server/dist/server.mjs
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: SANDBOX
+        value: "1"
+      - key: JAAY_FX_FIXED_XOF_PER_BTC
+        value: "40000000"
+      - key: PORT
+        value: "10000"
+      # No disk on the free plan: disposable SANDBOX data.
+      - key: DB_PATH
+        value: /tmp/jaay.sqlite
+      - key: JAAY_POS_DIR
+        value: apps/pos/dist
+      - key: JAAY_SIM_DIR
+        value: apps/customer-sim/dist
+      # Rate limits per visitor, read from Render's X-Forwarded-For.
+      - key: TRUST_PROXY
+        value: "1"
+      # Exact public https origin shown on the service page, for example https://jaay-demo.onrender.com
+      - key: JAAY_BASE_URL
+        sync: false
+      # Render generates a random base64 256-bit value: no one handles this secret.
+      - key: JAAY_MASTER_KEY
+        generateValue: true
