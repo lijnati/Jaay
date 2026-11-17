@@ -24,6 +24,7 @@ const en = {
   notOpened: "Nothing is opened automatically. Tap a link to see the receipt and its 6-digit code.",
   raw: "What a wallet sees (raw responses)",
   error: "Payment failed: {reason}",
+  generic: "the request could not be completed",
   lang: "Français",
 };
 export type Key = keyof typeof en;
@@ -52,6 +53,7 @@ const fr: Record<Key, string> = {
   notOpened: "Rien ne s'ouvre tout seul. Touchez un lien pour voir le reçu et son code à 6 chiffres.",
   raw: "Ce que voit un portefeuille (réponses brutes)",
   error: "Paiement échoué : {reason}",
+  generic: "la demande n'a pas abouti",
   lang: "English",
 };
 export const CATALOG = { en, fr } as const;

@@ -209,6 +209,7 @@ describe("A3 POST /v1/wallet/summary", () => {
     const msat = (sid: string) => srv.repo.getSale(dev.deviceId, sid)!.quoteMsat!;
     expect(j.receiveOnly).toBe(true);
     expect(j.backend).toMatchObject({ kind: "sandbox", available: true, spendMethods: [], balanceMsat: null });
+    expect(j.backend).not.toHaveProperty("label"); // a code only; the app translates it
     expect(j.totals.today).toEqual({ xof: 2500, msat: String(msat(today.sid)), count: 1 });
     expect(j.totals.allTime).toEqual({ xof: 3500, msat: String(msat(today.sid) + msat(yesterday.sid)), count: 2 });
     expect(j.recent.map((r: { amountXof: number }) => r.amountXof)).toEqual([2500, 1000]);

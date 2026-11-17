@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { ConfigError, loadConfig } from "./config";
 import { msatForXofAtXofRate } from "./fx";
-import { renderReceipt } from "./receipt";
+import { RECEIPT_TEXT, renderReceipt } from "./receipt";
 import { enroll, makeServer, q, sell, signedPost, type Device } from "./testkit";
 
 type Srv = ReturnType<typeof makeServer>;
@@ -202,4 +202,21 @@ describe("/sim/ serving", () => {
     expect((await makeServer().req("/sim/")).status).toBe(404);
     expect(() => loadConfig({ JAAY_SIM_DIR: join(tmpdir(), "nope-sim") })).toThrow(ConfigError);
   });
+});
+
+test("receipt strings: every key in FR and EN, non-empty; the page has no other user-visible text", () => {
+  expect(Object.keys(RECEIPT_TEXT.en).sort()).toEqual(Object.keys(RECEIPT_TEXT.fr).sort());
+  for (const lang of ["fr", "en"] as const) for (const [k, v] of Object.entries(RECEIPT_TEXT[lang])) expect(v.trim(), `${lang}.${k}`).not.toBe("");
+  const strip = (html: string) => html.replace(/<style>[^<]*<\/style>/, "").replace(/<[^>]+>/g, "\n").split("\n").map((x) => x.trim()).filter(Boolean);
+  const views = [
+    renderReceipt({ kind: "generic" }, "en", true),
+    renderReceipt({ kind: "pending", label: "L", amountXof: 1000, checkedAt: 0 }, "en", true),
+    renderReceipt({ kind: "paid", amountXof: 1000, paidAt: 0, code: "123456", late: true, label: "L", msat: "1000", fixedRate: true }, "en", true),
+  ];
+  const known = Object.values(RECEIPT_TEXT.en);
+  for (const line of views.flatMap(strip)) {
+    // Each text node is either catalog text (possibly followed by a value), the wordmark, or data (label, numbers, time).
+    const ok = line === "jaay" || /^[\d\s\u00a0:()XOFsatUTC.-]+$/.test(line) || known.some((k) => line.startsWith(k) || line.includes(k)) || line === "L" || /^jaay /.test(line);
+    expect(ok, line).toBe(true);
+  }
 });

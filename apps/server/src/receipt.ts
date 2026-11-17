@@ -19,7 +19,8 @@ export function pickLang(acceptLanguage: string | undefined): Lang {
   return first.startsWith("en") ? "en" : "fr";
 }
 
-const T = {
+/** Every receipt string, FR and EN (completeness is tested). */
+export const RECEIPT_TEXT = {
   fr: {
     title: "Reçu",
     pending: "Pas encore payé",
@@ -60,7 +61,7 @@ const fmtClock = (ms: number) => `${new Date(ms).toISOString().slice(11, 19)} UT
 const fmtCode = (code: string) => `<span aria-hidden="true">${esc(code.replace(/^(\d{3})(\d{3})$/, "$1 $2"))}</span><span class="vh">${esc(code)}</span>`;
 
 export function renderReceipt(view: ReceiptView, lang: Lang, sandbox: boolean): string {
-  const t = T[lang];
+  const t = RECEIPT_TEXT[lang];
   let body: string;
   let refresh = "";
   if (view.kind === "paid") {

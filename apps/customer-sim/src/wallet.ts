@@ -6,7 +6,8 @@ import { decode } from "light-bolt11-decoder";
 
 /** The only error the UI shows. Its message is an LNURL error reason from the server, or a generic word. */
 export class WalletError extends Error {}
-const GENERIC = "Error";
+/** Message of a failure that has no server-given reason; the page shows a translated text for it. */
+export const GENERIC = "Error";
 
 /** https everywhere; http only on localhost and 127.0.0.1 (same rule as the protocol's base URL check). */
 export function allowedUrl(u: URL): boolean {

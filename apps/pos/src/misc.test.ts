@@ -43,3 +43,11 @@ test("no console logging anywhere in the PWA source (tokens, codes, amounts, key
   expect(files.length).toBeGreaterThan(5);
   for (const f of files) expect(readFileSync(new URL(f, dir), "utf8"), f).not.toMatch(/\bconsole\s*\./);
 });
+
+test("i18n: no hard-coded user-visible text in the PWA or the simulator; only the wordmark is literal", () => {
+  for (const f of ["./main.ts", "../../customer-sim/src/main.ts"]) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    const literals = [...src.matchAll(/\btext: (["'`])((?:(?!\1).)*)\1/g)].map((m) => m[2]!).filter((s) => !s.includes("${"));
+    expect(literals.filter((s) => s !== "jaay" && s !== "jaay sim"), f).toEqual([]);
+  }
+});

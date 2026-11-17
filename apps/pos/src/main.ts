@@ -20,7 +20,7 @@ interface WalletCache {
   at: number;
   data: {
     receiveOnly: boolean;
-    backend: { label: string; available: boolean; spendMethods: string[] | null; balanceMsat: string | null };
+    backend: { kind: string; available: boolean; spendMethods: string[] | null; balanceMsat: string | null };
     totals: { today: { xof: number; msat: string; count: number }; allTime: { xof: number; msat: string; count: number } };
     recent: { sid: string; amountXof: number; paidAt: string; status: string; demo?: boolean }[];
   };
@@ -81,6 +81,8 @@ function fold(id: string, which: keyof typeof state.open, title: string, ...kids
   d.addEventListener("toggle", () => (state.open[which] = (d as HTMLDetailsElement).open));
   return d;
 }
+/** The server sends the backend as a code; unknown codes are shown as they are. */
+const backendName = (kind: string) => (["sandbox", "nwc", "lnbits"].includes(kind) ? t(`backend.${kind}` as Key) : kind);
 /** Date and time without seconds, in the app language. */
 const when = (ms: number | string) => new Intl.DateTimeFormat(getLang(), { dateStyle: "short", timeStyle: "short" }).format(new Date(ms));
 const host = () => (state.config ? new URL(state.config.baseUrl).host : "");
@@ -501,7 +503,7 @@ async function walletScreen(): Promise<HTMLElement> {
         "walletDetails",
         t("wallet.details"),
         h("p", { class: "hint", id: "spend-methods", text: t("wallet.spendMethods", { list: spend && spend.length ? spend.join(", ") : t("wallet.none") }) }),
-        h("p", { class: "hint", text: t("wallet.backend", { label: d.backend.label }) }),
+        h("p", { class: "hint", id: "backend", text: t("wallet.backend", { label: backendName(d.backend.kind) }) }),
         !d.backend.available && h("p", { class: "msg warn", text: t("wallet.unavailable") }),
         d.backend.balanceMsat != null && h("p", { text: t("wallet.balance", { sats: sats(d.backend.balanceMsat) }) }),
         d.backend.balanceMsat != null && h("p", { class: "hint", text: t("wallet.balanceNote") }),

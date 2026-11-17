@@ -250,7 +250,7 @@ Device authenticated, body `{}`. Feeds the receive-only Wallet screen.
 ```json
 {
   "receiveOnly": true,
-  "backend": { "kind": "nwc", "label": "Nostr Wallet Connect (receive-only connection)", "available": true, "spendMethods": [], "balanceMsat": null, "balanceNote": null },
+  "backend": { "kind": "nwc", "available": true, "spendMethods": [], "balanceMsat": null, "balanceNote": null },
   "totals": { "today": { "xof": 2500, "msat": "6115000", "count": 1 }, "allTime": { "xof": 3500, "msat": "8561000", "count": 2 } },
   "recent": [ { "sid": "AbCdEf", "amountXof": 2500, "paidAt": "2026-11-14T09:00:02.000Z", "status": "paid", "demo": false } ],
   "generatedAt": "2026-11-14T09:05:00.000Z"
@@ -261,6 +261,7 @@ Device authenticated, body `{}`. Feeds the receive-only Wallet screen.
 - `recent` holds the last 50 paid sales with a 6-character sid prefix.
 - `spendMethods` lists any spend-capable method the wallet now grants (expected empty). If one appears after enrollment, `receiveOnly` becomes false and the server logs an error.
 - `balanceMsat` is present only when the NWC connection is granted `get_balance`, and `balanceNote` says it is the backend's own report.
+- `kind` is a code (`sandbox`, `nwc` or `lnbits`); the app shows a translated name for it (EN and FR). No display text is sent.
 - If the backend cannot be reached, `available` is false, `spendMethods` is null, and totals are still returned.
 
 ## Invoice checks

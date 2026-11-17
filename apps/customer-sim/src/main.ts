@@ -3,7 +3,7 @@ import "../../pos/src/styles.css";
 import "./sim.css";
 import { groupDigits } from "../../pos/src/money";
 import { initLang, t, toggleLang } from "./i18n";
-import { fetchPayRequest, invoiceSummary, parseInput, requestInvoice, sandboxPay, successLink, WalletError, type PayRequest } from "./wallet";
+import { GENERIC, fetchPayRequest, invoiceSummary, parseInput, requestInvoice, sandboxPay, successLink, WalletError, type PayRequest } from "./wallet";
 
 type Kid = Node | string | null | false | undefined;
 function h(tag: string, attrs: Record<string, string | ((e: Event) => void) | undefined> = {}, ...kids: Kid[]): HTMLElement {
@@ -54,10 +54,13 @@ async function read(): Promise<void> {
       ),
     );
   } catch (e) {
-    state.error = e instanceof WalletError ? e.message : "Error";
+    state.error = errorText(e);
   }
   render();
 }
+
+/** A reason sent by the server (LNURL ERROR) is shown as the wallet would; anything else gets a translated text. */
+const errorText = (e: unknown) => (e instanceof WalletError && e.message !== GENERIC ? e.message : t("generic"));
 
 async function pay(): Promise<void> {
   const p = state.pay;
@@ -79,7 +82,7 @@ async function pay(): Promise<void> {
         h("p", { class: "mono", text: inv.pr }),
       ),
     );
-    if (!(await sandboxPay(fetch.bind(globalThis), p.callback.origin, sum.paymentHash))) throw new WalletError("Error");
+    if (!(await sandboxPay(fetch.bind(globalThis), p.callback.origin, sum.paymentHash))) throw new WalletError(GENERIC);
     state.raw.push({ label: `POST /sandbox/pay/${sum.paymentHash.slice(0, 8)}...`, body: { sandbox: true, status: "paid" } });
     const s = successLink(inv.successAction, p.callback);
     state.steps.push(
@@ -97,7 +100,7 @@ async function pay(): Promise<void> {
     );
     state.pay = null;
   } catch (e) {
-    state.error = e instanceof WalletError ? e.message : "Error";
+    state.error = errorText(e);
   }
   state.busy = false;
   render();

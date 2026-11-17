@@ -415,14 +415,14 @@ export class SaleService {
       msat: String(rows.reduce((a, r) => a + (r.quoteMsat ?? 0n), 0n)),
       count: rows.length,
     });
-    let backend: { kind: string; label: string; available: boolean; spendMethods: string[] | null; balanceMsat: string | null; balanceNote: string | null };
+    // `kind` is a code (sandbox, nwc, lnbits); the app translates it. No English label goes to the device.
+    let backend: { kind: string; available: boolean; spendMethods: string[] | null; balanceMsat: string | null; balanceNote: string | null };
     try {
       const info = await this.d.backends.forDevice(device).describe();
       const spend = spendMethods(info.methods);
       if (spend.length > 0) this.d.log.error("spend_method_detected", { dev: hashId(device.id), n: spend.length });
       backend = {
         kind: device.backend,
-        label: info.label,
         available: true,
         spendMethods: spend,
         balanceMsat: info.balanceMsat === null ? null : String(info.balanceMsat),
@@ -430,7 +430,7 @@ export class SaleService {
       };
     } catch (e) {
       this.d.log.warn("describe_failed", { dev: hashId(device.id), err: errName(e) });
-      backend = { kind: device.backend, label: device.backend, available: false, spendMethods: null, balanceMsat: null, balanceNote: null };
+      backend = { kind: device.backend, available: false, spendMethods: null, balanceMsat: null, balanceNote: null };
     }
     return {
       receiveOnly: backend.spendMethods === null || backend.spendMethods.length === 0,
