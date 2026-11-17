@@ -34,7 +34,7 @@ The main session runs on Opus 5.5. Use cheaper models for easy work through suba
 9. Server time is authoritative. Never trust the merchant device clock for security decisions.
 
 ## Stack and layout
-- TypeScript strict, pnpm workspaces, Node 20+, vitest, eslint (flat config) and prettier. Playwright is added at M3.
+- TypeScript strict, pnpm workspaces, Node 22.13+ (node:sqlite), vitest, eslint (flat config) and prettier. Playwright is added at M3.
 - `packages/protocol`: pure TS (Web Crypto only), no Node-only APIs so it runs in the browser and on the server.
 - `apps/server`: Hono on Node. Backend adapters behind one interface: `nwc`, `lnbits`, `sandbox`.
 - `apps/pos`: Vite PWA, offline-first, IndexedDB for the sale ledger.

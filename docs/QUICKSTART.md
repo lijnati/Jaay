@@ -2,6 +2,12 @@
 
 Everything here is **SANDBOX**: payments are simulated, no real bitcoin moves, and the exchange rate is a **fixed demo rate** (40 000 000 XOF per BTC), not a market rate. Every screen says so.
 
+## Requirements
+
+- Node 22.13 or newer (the server uses the built-in `node:sqlite`). Checked with Node 24.18.
+- pnpm 11, through Corepack (`corepack enable` picks the version pinned in `package.json`).
+- git. Nothing else: no Docker, no database server, no internet once installed (the demo uses a fixed rate).
+
 ## Three commands
 
 ```bash
@@ -52,6 +58,29 @@ Nothing opens by itself. Stop with Ctrl+C. Check it from another terminal with `
    ![Sales](screens/ledger.png) ![Wallet](screens/wallet.png)
 
 Try airplane mode too: after the first load, the merchant app keeps selling and confirming codes offline, and checks everything with the server when the network returns.
+
+## Run the checks
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+`pnpm test` also checks the threat matrix (`pnpm security:matrix`); `pnpm test:security` runs only the security tests it names.
+
+The browser end-to-end suite needs Chromium for Playwright, installed once:
+
+```bash
+pnpm --filter @jaay/pos exec playwright install chromium
+```
+
+```bash
+pnpm --filter @jaay/pos test:e2e
+```
+
+Set `E2E_WIDTH=320` or `E2E_WIDTH=412` to run it at another phone width (default 360). Clean-clone timings: [VERIFY.md](VERIFY.md).
 
 ## Next
 
