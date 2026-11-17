@@ -101,7 +101,7 @@ Response `200`:
   "callback": "https://pay.example.org/lnurlp/cb?p=<token>",
   "minSendable": 1520000,
   "maxSendable": 1520000,
-  "metadata": "[[\"text/plain\",\"Jaay: 1000 XOF. Recu / receipt: https://pay.example.org/r/<receiptToken>\"]]",
+  "metadata": "[[\"text/plain\",\"Jaay: 1000 XOF. Reçu / receipt: https://pay.example.org/r/<receiptToken>\"]]",
   "commentAllowed": 0
 }
 ```
@@ -252,7 +252,7 @@ Device authenticated, body `{}`. Feeds the receive-only Wallet screen.
   "receiveOnly": true,
   "backend": { "kind": "nwc", "label": "Nostr Wallet Connect (receive-only connection)", "available": true, "spendMethods": [], "balanceMsat": null, "balanceNote": null },
   "totals": { "today": { "xof": 2500, "msat": "6115000", "count": 1 }, "allTime": { "xof": 3500, "msat": "8561000", "count": 2 } },
-  "recent": [ { "sid": "AbCdEf", "amountXof": 2500, "paidAt": "2026-11-14T09:00:02.000Z", "status": "paid" } ],
+  "recent": [ { "sid": "AbCdEf", "amountXof": 2500, "paidAt": "2026-11-14T09:00:02.000Z", "status": "paid", "demo": false } ],
   "generatedAt": "2026-11-14T09:05:00.000Z"
 }
 ```

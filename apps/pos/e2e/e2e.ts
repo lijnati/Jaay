@@ -17,6 +17,10 @@ const SERVER = fileURLToPath(new URL("../../server", import.meta.url));
 const SIM = fileURLToPath(new URL("../../customer-sim", import.meta.url));
 const SCREENS = fileURLToPath(new URL("../../../docs/screens", import.meta.url));
 const DIST = join(POS, "dist");
+// E2E_WIDTH=320|360|412 runs the whole suite at that width (default 360; screenshots only at 360). E2E_ONLY=layout runs just the layout step.
+const WIDTH = Number(process.env.E2E_WIDTH ?? 360);
+const ONLY = process.env.E2E_ONLY;
+const LAYOUT_WIDTHS = [...new Set([320, 360, WIDTH])];
 const PORT = 8797;
 const B = `http://localhost:${PORT}`;
 const HOST = `localhost:${PORT}`;
@@ -85,7 +89,7 @@ async function customerPays(qr: string): Promise<{ sid: string; code: string }> 
   const paid = await fetch(`${B}/sandbox/pay/${sid}`, { method: "POST" });
   assert(paid.ok, "sandbox pay failed");
   const html = await (await fetch(cb.successAction.url)).text();
-  const code = /class="code">(\d{6})</.exec(html)?.[1];
+  const code = codeIn(html);
   assert(code, "no code on the receipt page");
   return { sid, code: code! };
 }
@@ -117,15 +121,105 @@ async function statusOf(page: Page, sid: string): Promise<string | null> {
   await page.click("#tab-ledger");
   return page.getAttribute(`li[data-sid="${sid}"]`, "data-status");
 }
-const launch = (dir: string, offline = false) => chromium.launchPersistentContext(dir, { viewport: { width: 360, height: 780 }, locale: "en-US", offline });
+const launch = (dir: string, offline = false) => chromium.launchPersistentContext(dir, { viewport: { width: WIDTH, height: 780 }, locale: "en-US", offline });
+const shot = (page: Page, name: string, fullPage = false) => (WIDTH === 360 ? page.screenshot({ path: join(SCREENS, `${name}.png`), fullPage }) : Promise.resolve());
+mkdirSync(join(SCREENS, "fr"), { recursive: true });
 const sidOf = async (qr: string) => (await decodeSale((await tokenOf(qr)).token, keys, { minAmountXof: 1, maxAmountXof: 0xffffffff })).sid;
 
 
+// ---------- layout: no horizontal scroll on every screen, EN and FR; FR screenshot set at 360 px ----------
+const codeIn = (html: string) => (/class="vh">(\d{6})</.exec(html) ?? /class="code">(\d{6})</.exec(html))?.[1];
+await step("layout", `no horizontal scroll at ${LAYOUT_WIDTHS.join(", ")} px (EN, FR): PWA screens, simulator, receipt; primary button above the fold at 640 px high`, async () => {
+  const bad: string[] = [];
+  const seen: string[] = [];
+  for (const w of LAYOUT_WIDTHS) {
+    for (const lang of ["en", "fr"] as const) {
+      const ldir = mkdtempSync(join(tmpdir(), "jaay-layout-"));
+      const lctx = await chromium.launchPersistentContext(ldir, { viewport: { width: w, height: 640 }, locale: lang === "fr" ? "fr-FR" : "en-US" });
+      const shots = w === 360 && lang === "fr" && WIDTH === 360;
+      if (process.env.E2E_DEBUG) console.log(`  layout run ${w} ${lang}`);
+      const check = async (pg: Page, name: string) => {
+        const [sw, cw] = await pg.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+        seen.push(name);
+        if (sw !== cw) bad.push(`${w} ${lang} ${name}: ${sw} > ${cw}`);
+        if (shots) await pg.evaluate(() => scrollTo(0, 0));
+        if (shots && ["sell", "confirm", "wallet", "receipt-before", "receipt-after", "sim-request", "ledger"].includes(name)) await pg.screenshot({ path: join(SCREENS, "fr", `${name}.png`), fullPage: !["sell", "wallet"].includes(name) });
+      };
+      try {
+        const app = lctx.pages()[0] ?? (await lctx.newPage());
+        await app.goto(`${B}/app/`);
+        await app.waitForSelector("#demo-shop");
+        await check(app, "enroll");
+        await app.click("#demo-shop");
+        await app.check("#enroll-check");
+        await app.click("#enroll-submit");
+        await app.waitForSelector("#create");
+        await check(app, "keypad");
+        const qr = await sell(app, 2500);
+        await check(app, "sell");
+        const fold = await app.evaluate(() => {
+          const b = document.querySelector("#to-confirm")!.getBoundingClientRect();
+          const nav = document.querySelector("nav.tabs")!.getBoundingClientRect();
+          const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          return { bottom: Math.round(b.bottom), limit: Math.round(nav.top), hit: hit?.id ?? hit?.tagName };
+        });
+        if (fold.bottom > fold.limit || fold.hit !== "to-confirm") bad.push(`${w} ${lang} primary button below the fold: bottom ${fold.bottom}, nav at ${fold.limit}, hit ${fold.hit}`);
+        if (await app.$("#demo-tools summary")) await app.click("#demo-tools summary");
+        await check(app, "sell-demo-tools");
+
+        const sim = await lctx.newPage();
+        await sim.goto(`${B}/sim/?lnurl=${encodeURIComponent(qr)}`);
+        await sim.waitForSelector("#step1");
+        await check(sim, "sim-request");
+        const desc = (await sim.textContent("#desc"))!;
+        const receipt = await lctx.newPage();
+        await receipt.goto(/https?:\/\/\S+\/r\/[A-Za-z0-9_-]{22}/.exec(desc)![0]);
+        await check(receipt, "receipt-before");
+        await sim.click("#pay");
+        await sim.waitForSelector("#step3");
+        await sim.click("#raw summary");
+        await check(sim, "sim-paid");
+        await receipt.goto((await sim.getAttribute("#success-link", "href"))!);
+        const code = codeIn(await receipt.content());
+        assert(code, "no code on the paid receipt");
+        await check(receipt, "receipt-after");
+
+        await app.bringToFront();
+        await app.click("#to-confirm");
+        await check(app, "confirm-empty");
+        await typeCode(app, code === "000000" ? "111111" : "000000");
+        await check(app, "confirm");
+        await typeCode(app, code!);
+        await check(app, "confirm-ok");
+        await app.click("#next");
+        await app.waitForSelector("#create"); // the handler awaits before switching screens
+        await app.click("#tab-settings");
+        await app.click("#demo-load");
+        await app.waitForSelector("#demo-note");
+        await check(app, "settings");
+        await app.click("#tab-ledger");
+        await check(app, "ledger");
+        await app.click("#tab-wallet");
+        await app.waitForSelector("#wallet-all");
+        await app.waitForSelector("#wallet-recent li", { timeout: 10_000 }).catch(() => {});
+        if (await app.$("#wallet-details summary")) await app.click("#wallet-details summary");
+        await check(app, "wallet");
+      } finally {
+        await lctx.close();
+      }
+    }
+  }
+  for (const b of bad) console.log(`  layout: ${b}`);
+  assert(bad.length === 0, `${bad.length} problems (listed above)`);
+  return `${seen.length} screen checks, none wider than the viewport`;
+});
+
+if (!ONLY) {
 try {
   // The full judge flow, in its own fresh profile: no enrollment code, no wallet, no internet.
   await step("judge", "judge flow: demo shop, 2 500 F sale, copy, simulator pays, receipt code, merchant confirms; demo data matches Wallet", async () => {
     const jdir = mkdtempSync(join(tmpdir(), "jaay-judge-"));
-    const jctx = await chromium.launchPersistentContext(jdir, { viewport: { width: 360, height: 780 }, locale: "en-US" });
+    const jctx = await chromium.launchPersistentContext(jdir, { viewport: { width: WIDTH, height: 780 }, locale: "en-US" });
     await jctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: B });
     const app = jctx.pages()[0] ?? (await jctx.newPage());
     try {
@@ -138,11 +232,14 @@ try {
       await app.click("#enroll-submit");
       await app.waitForSelector("#tab-sell");
       const qr = await sell(app, 2500);
+      assert(!(await app.isVisible("#copy")), "demo tools should start collapsed");
+      await app.click("#demo-tools summary");
       assert(await app.isVisible("#copy"), "copy helper missing in sandbox");
       await app.click("#copy");
       const copied = await app.evaluate(() => navigator.clipboard.readText());
       assert(copied === qr, "clipboard differs from the QR string");
-      await app.screenshot({ path: join(SCREENS, "sell.png") });
+      await app.evaluate(() => scrollTo(0, 0));
+      await shot(app, "sell");
       const simHref = (await app.getAttribute("#open-sim", "href"))!;
       assert(simHref === `/sim/?lnurl=${encodeURIComponent(qr)}`, "simulator link");
 
@@ -152,29 +249,31 @@ try {
       assert((await sim.textContent("#sandbox")) === "SANDBOX customer wallet (simulator, not a real wallet)", "simulator label");
       const desc = (await sim.textContent("#desc"))!;
       assert(desc.includes("2500 XOF") && desc.includes("fixed demo rate"), `description "${desc}"`);
-      assert((await sim.textContent("#msat"))!.includes("6,250 sats"), "amount");
-      await sim.screenshot({ path: join(SCREENS, "sim-request.png") });
+      assert((await sim.textContent("#msat"))!.includes("6\u00a0250\u00a0000 msat (6\u00a0250 sats)"), `amount "${await sim.textContent("#msat")}"`);
+      await shot(sim, "sim-request");
       const fallback = /https?:\/\/\S+\/r\/[A-Za-z0-9_-]{22}/.exec(desc)![0];
       const receipt = await jctx.newPage();
       await receipt.goto(fallback);
       assert(!(await receipt.content()).includes('class="code"'), "code visible before payment");
-      await receipt.screenshot({ path: join(SCREENS, "receipt-before.png") });
+      await shot(receipt, "receipt-before");
 
       await sim.click("#pay");
       await sim.waitForSelector("#step3");
+      assert(await sim.isVisible("#step2 .msg.ok"), "description hash (with the accented metadata text) does not match");
       const link = (await sim.getAttribute("#success-link", "href"))!;
       assert(new URL(link).host === HOST, "success link host");
       assert(sim.context().pages().length === 3, "the simulator opened something by itself");
-      await sim.screenshot({ path: join(SCREENS, "sim-paid.png"), fullPage: true });
+      await shot(sim, "sim-paid", true);
       await receipt.goto(link);
-      const code = /class="code">(\d{6})</.exec(await receipt.content())?.[1];
+      const code = codeIn(await receipt.content());
       assert(code, "no code after payment");
-      await receipt.screenshot({ path: join(SCREENS, "receipt-after.png") });
+      await shot(receipt, "receipt-after");
 
       await app.bringToFront();
       await app.click("#to-confirm");
       assert((await typeCode(app, code!)) === "Payment confirmed.", "confirm");
       await app.click("#next");
+      await app.waitForSelector("#create"); // the handler awaits before switching screens
 
       await app.click("#tab-settings");
       await app.click("#demo-load");
@@ -198,8 +297,9 @@ try {
       await app.click("#tab-wallet");
       await app.waitForSelector("#wallet-all");
       await app.waitForFunction((want) => document.querySelector("#wallet-all")?.textContent?.replace(/\D/g, "") === String(want), ledgerSum, { timeout: 10_000 });
-      await app.screenshot({ path: join(SCREENS, "wallet.png"), fullPage: true });
+      await shot(app, "wallet");
       assert(ledgerSum === 2500 + 80850, `ledger paid total ${ledgerSum}`);
+      assert((await app.locator('#wallet-recent li[data-demo="1"] .st-demo').count()) === 12, "demo rows not labeled in Wallet");
       return `code typed, confirmed; Wallet all time ${ledgerSum} F = ledger paid total`;
     } finally {
       await jctx.close();
@@ -306,9 +406,27 @@ try {
     await page.click("#to-confirm");
     const r1 = await typeCode(page, wrong);
     const r2 = await typeCode(page, wrong);
-    await page.screenshot({ path: join(SCREENS, "confirm.png") });
+    await shot(page, "confirm");
+    assert(r1 === "Code not accepted. 2 attempts left." && r2 === "Code not accepted. 1 attempt left.", `first two: ${r1} / ${r2}`);
+    // The counter text after a reload is read from the persisted record and matches it.
+    await ctx.setOffline(true);
+    await page.reload();
+    await page.waitForSelector("#to-confirm");
+    await page.click("#to-confirm");
+    const shown = await page.textContent("#attempts");
+    const stored = await page.evaluate(async (s) => {
+      const db = await new Promise<IDBDatabase>((r) => {
+        const o = indexedDB.open("jaay-pos");
+        o.onsuccess = () => r(o.result);
+      });
+      return new Promise<number>((r) => {
+        const q = db.transaction("sales").objectStore("sales").get(s);
+        q.onsuccess = () => r((q.result as { attempts: number }).attempts);
+      });
+    }, sid);
+    assert(stored === 2 && shown === "1 attempt left.", `after reload: stored ${stored}, shown "${shown}"`);
+    assert((await page.textContent("#sale-id"))?.startsWith("Sale "), "sale identity missing");
     const r3 = await typeCode(page, wrong);
-    assert(r1 === "Code not accepted." && r2 === "Code not accepted.", `first two: ${r1} / ${r2}`);
     assert(r3.startsWith("Too many wrong codes"), `third: ${r3}`);
     const r4 = await typeCode(page, right);
     assert(r4.startsWith("This sale cannot be confirmed here"), `fourth: ${r4}`);
@@ -364,7 +482,7 @@ try {
     for (const [sid, st] of Object.entries(want)) await page.waitForSelector(`li[data-sid="${sid}"][data-status="${st}"]`, { timeout: 20_000 });
     const note = await page.textContent(`li[data-sid="${offline.leaked}"] .hint`);
     assert(note?.includes("server shows no matching payment"), `mismatch note "${note}"`);
-    await page.screenshot({ path: join(SCREENS, "ledger.png") });
+    await shot(page, "ledger");
     return "paid, paid, mismatch";
   });
 
@@ -429,6 +547,7 @@ try {
 } finally {
   await stopAll(ctx);
 }
+} else server.kill();
 
 // f. size budget (first load = everything the shell precaches, gzipped)
 await step("f", "first load under 150 KB gzipped (HTML, JS, CSS, SW, manifest, icons)", async () => {

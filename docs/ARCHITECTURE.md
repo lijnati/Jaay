@@ -272,7 +272,7 @@ A page that plays an LNURL-pay wallet, always labeled "SANDBOX customer wallet (
 ### Sandbox helpers in the merchant PWA
 
 - **Try the sandbox demo shop** (Enroll screen, only when `/healthz` says sandbox): calls the open sandbox enrollment and feeds the answer into the normal enrollment path: the same strict parser, the same host confirmation, the same non-extractable key derivation. The secret is never put in the visible text box.
-- **Copy payment string** and **Open customer simulator** under the QR: decided by `sandboxHelpers(config, qr)`, which returns null unless the device config says sandbox (unit tested).
+- **Copy payment string** and **Open customer simulator** in a collapsed **Demo tools (SANDBOX)** section under the sale buttons: decided by `sandboxHelpers(config, qr)`, which returns null unless the device config says sandbox (unit tested).
 - **Load demo data / Remove demo data** (Settings, sandbox only): 12 deterministic sales over the last 3 days (500 to 25 000 F, three sample merchant types), flagged `demo`. The server is seeded first through `POST /sandbox/seed` (device-signed, sandbox only, at most 50 sales, paid within the last 30 days, idempotent per sid, marked demo), then the local ledger. `POST /sandbox/unseed` and the local delete remove only demo rows. Wallet totals and reconcile therefore agree with the ledger (checked by the e2e judge flow).
 
 ### Receipt page

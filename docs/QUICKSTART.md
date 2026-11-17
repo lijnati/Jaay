@@ -27,7 +27,7 @@ Nothing opens by itself. Stop with Ctrl+C. Check it from another terminal with `
 
    ![Sell screen with the QR and the sandbox helpers](screens/sell.png)
 
-3. Tap **Open customer simulator** (or copy the payment string and paste it into /sim/). The simulator shows what a wallet sees: the description, the amount in sats and the XOF price.
+3. Open **Demo tools (SANDBOX)** under the sale buttons and tap **Open customer simulator** (or copy the payment string and paste it into /sim/). The simulator shows what a wallet sees: the description, the amount in sats and the XOF price.
 
    ![Simulator: payment request](screens/sim-request.png)
 
@@ -43,7 +43,7 @@ Nothing opens by itself. Stop with Ctrl+C. Check it from another terminal with `
 
    ![Receipt after payment](screens/receipt-after.png)
 
-7. Back in the merchant app, tap **Customer paid: enter code** and type the 6 digits. The app checks the code with its own key (3 attempts at most) and shows **Payment confirmed**. The code itself never appears on the merchant screen.
+7. Back in the merchant app, tap **Customer paid? Enter the code** and type the 6 digits. The app checks the code with its own key (3 attempts at most; after a wrong code it says only "Code not accepted" and how many attempts are left) and shows **Payment confirmed**. The code itself never appears on the merchant screen.
 
    ![Confirm screen](screens/confirm.png)
 
