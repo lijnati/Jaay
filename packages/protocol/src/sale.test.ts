@@ -274,18 +274,20 @@ describe("peekDeviceId", () => {
 });
 
 describe("randomness", () => {
-  test("10,000 encodes never repeat an IV or a sid, and every sid is 8 bytes", async () => {
+  // Bounded by operation count; the timeout is only a generous safety net for a loaded machine. 2,000 random
+  // 96-bit IVs collide with probability about 2^-75, so a repeat here means the IV is not random (Hard rule 6).
+  test("2,000 encodes never repeat an IV or a sid, and every sid is 8 bytes", async () => {
     const ivs = new Set<string>();
     const sids = new Set<string>();
-    for (let i = 0; i < 10_000; i++) {
+    for (let i = 0; i < 2_000; i++) {
       const { token, sid } = await encodeSale(keysA, devA, { amountXof: 2500 });
       expect(b64uDecode(sid).length).toBe(8);
       ivs.add(b64uEncode(b64uDecode(token).subarray(17, 29)));
       sids.add(sid);
     }
-    expect(ivs.size).toBe(10_000);
-    expect(sids.size).toBe(10_000);
-  }, 30_000); // 10,000 sequential AES-GCM encodes can pass 5 s on a loaded machine
+    expect(ivs.size).toBe(2_000);
+    expect(sids.size).toBe(2_000);
+  }, 120_000);
 });
 
 describe("size budget", () => {

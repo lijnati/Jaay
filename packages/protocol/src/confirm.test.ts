@@ -43,17 +43,20 @@ describe("deriveConfirmCode", () => {
     const counts = Array.from({ length: 6 }, () =>
       new Array<number>(10).fill(0),
     );
-    for (let i = 0; i < 20_000; i++) {
-      const code = await deriveConfirmCode(keys, randomSid());
-      expect(code).toMatch(/^\d{6}$/);
-      for (let p = 0; p < 6; p++) counts[p]![Number(code[p])]!++;
+    // Bounded by operation count (20,000, needed for the statistics), computed in parallel batches of 500.
+    for (let i = 0; i < 20_000; i += 500) {
+      const codes = await Promise.all(Array.from({ length: 500 }, () => deriveConfirmCode(keys, randomSid())));
+      for (const code of codes) {
+        expect(code).toMatch(/^\d{6}$/);
+        for (let p = 0; p < 6; p++) counts[p]![Number(code[p])]!++;
+      }
     }
     // Chi-square with 9 degrees of freedom; 40 is roughly p = 7e-6.
     for (const row of counts) {
       const chi = row.reduce((s, c) => s + (c - 2000) ** 2 / 2000, 0);
       expect(chi).toBeLessThan(40);
     }
-  }, 30_000); // 20,000 sequential HMACs take about 10 s on a loaded machine
+  }, 180_000); // generous safety net only; the work is fixed
 
   test.each(["", "short", "A".repeat(12), "AAAAAAAAAA+"])(
     "rejects sid %j",

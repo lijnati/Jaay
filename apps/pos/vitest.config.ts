@@ -5,5 +5,5 @@ export default defineConfig({
   resolve: {
     alias: { "@jaay/protocol": fileURLToPath(new URL("../../packages/protocol/src/index.ts", import.meta.url)) },
   },
-  test: { include: ["src/**/*.test.ts"], setupFiles: ["src/test-setup.ts"], testTimeout: 30_000 },
+  test: { include: ["src/**/*.test.ts"], setupFiles: ["src/test-setup.ts"], testTimeout: 120_000 },
 });

@@ -6,5 +6,5 @@ export default defineConfig({
     // Protocol source, read only. Its dist uses extensionless imports that plain Node cannot load.
     alias: { "@jaay/protocol": fileURLToPath(new URL("../../packages/protocol/src/index.ts", import.meta.url)) },
   },
-  test: { testTimeout: 30_000, include: ["src/**/*.test.ts"] },
+  test: { testTimeout: 120_000, include: ["src/**/*.test.ts"] },
 });

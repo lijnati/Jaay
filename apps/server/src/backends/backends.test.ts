@@ -1,6 +1,6 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { createSealer } from "../seal";
 import { ALBY_HUB_METHODS, Clock, FakeNwcWallet, MASTER_KEY } from "../testkit";
 import { Backends } from "./index";
@@ -76,7 +76,7 @@ describe("lnbits backend (mocked HTTP server; a real LNbits was NOT RUN)", () =>
 
   test("make invoice sends whole sats, description_hash and expiry; lookup maps paid", async () => {
     const clock = new Clock();
-    const b = new LnbitsBackend({ url: base, key: KEY }, fetch, clock.now, 2000);
+    const b = new LnbitsBackend({ url: base, key: KEY }, fetch, clock.now, 30_000); // real loopback HTTP: a generous bound so a loaded machine cannot trip the timeout
     await b.check();
     const inv = await b.makeInvoice({ msat: 2_446_000n, descriptionHashHex: DH, expirySec: 600 });
     const post = seen.find((s) => s.method === "POST")!;
@@ -90,8 +90,8 @@ describe("lnbits backend (mocked HTTP server; a real LNbits was NOT RUN)", () =>
 
   test("fails closed: bad key, server error, non-whole-sat amount, mainnet invoice", async () => {
     const clock = new Clock();
-    await expect(new LnbitsBackend({ url: base, key: "e".repeat(32) }, fetch, clock.now).check()).rejects.toBeInstanceOf(BackendUnavailable);
-    const b = new LnbitsBackend({ url: base, key: KEY }, fetch, clock.now);
+    await expect(new LnbitsBackend({ url: base, key: "e".repeat(32) }, fetch, clock.now, 30_000).check()).rejects.toBeInstanceOf(BackendUnavailable);
+    const b = new LnbitsBackend({ url: base, key: KEY }, fetch, clock.now, 30_000);
     await expect(b.makeInvoice({ msat: 1500n, descriptionHashHex: DH, expirySec: 600 })).rejects.toBeInstanceOf(BackendUnavailable);
     invoicePrefix = "lnbc";
     await expect(b.makeInvoice({ msat: 1000n, descriptionHashHex: DH, expirySec: 600 })).rejects.toBeInstanceOf(BackendUnavailable);
@@ -192,12 +192,18 @@ describe("NWC relay resilience (security item 10, fake transport)", () => {
     expect(w.clientsCreated).toBe(1);
 
     w.mode = "down";
-    const t0 = performance.now();
-    const err = await b.lookupInvoice(inv.paymentHash).catch((e: unknown) => e);
+    // Fake timers and the clock never advanced: if the call waited for its 200 ms timeout it would never settle
+    // and the test would time out. So "fails fast" is proven by logic, not by measuring wall time.
+    vi.useFakeTimers();
+    let err: unknown;
+    try {
+      err = await b.lookupInvoice(inv.paymentHash).catch((e: unknown) => e);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(err).toBeInstanceOf(BackendUnavailable);
     expect((err as Error).message).toBe("backend unavailable");
     expect(String((err as Error).stack)).not.toContain("walletconnect");
-    expect(performance.now() - t0).toBeLessThan(100);
 
     w.mode = "ok";
     const inv2 = await b.makeInvoice({ msat: 2000n, descriptionHashHex: DH, expirySec: 600 });
@@ -211,11 +217,22 @@ describe("NWC relay resilience (security item 10, fake transport)", () => {
     const w = new FakeNwcWallet();
     w.mode = "hang";
     const b = new NwcBackend(NWC_URL, w.factory, Date.now, 150);
-    const t0 = performance.now();
-    await expect(b.makeInvoice({ msat: 1000n, descriptionHashHex: DH, expirySec: 600 })).rejects.toBeInstanceOf(BackendUnavailable);
-    const took = performance.now() - t0;
-    expect(took).toBeGreaterThanOrEqual(140);
-    expect(took).toBeLessThan(1000);
+    // Fake timers: the timeout fires exactly at 150 ms of virtual time, whatever the machine load.
+    vi.useFakeTimers();
+    try {
+      let out: unknown = "pending";
+      const p = b.makeInvoice({ msat: 1000n, descriptionHashHex: DH, expirySec: 600 }).then(
+        () => (out = "resolved"),
+        (e: unknown) => (out = e),
+      );
+      await vi.advanceTimersByTimeAsync(149);
+      expect(out).toBe("pending");
+      await vi.advanceTimersByTimeAsync(1);
+      await p;
+      expect(out).toBeInstanceOf(BackendUnavailable);
+    } finally {
+      vi.useRealTimers();
+    }
     w.mode = "ok";
     await expect(b.makeInvoice({ msat: 1000n, descriptionHashHex: DH, expirySec: 600 })).resolves.toBeTruthy();
     expect(w.clientsCreated).toBe(2);
