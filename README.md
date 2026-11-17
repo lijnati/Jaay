@@ -1,48 +1,79 @@
-# jaay
+<p align="center">
+  <img src="apps/pos/public/icon.svg" width="88" height="88" alt="jaay logo">
+</p>
 
-**Sell without signal.**
-Vendez sans réseau.
+<h1 align="center">jaay</h1>
 
-[![CI](https://github.com/lijnati/Jaay/actions/workflows/ci.yml/badge.svg)](https://github.com/lijnati/Jaay/actions/workflows/ci.yml)
+<p align="center">
+  <strong>Sell without signal.</strong><br>
+  <em>Vendez sans réseau.</em>
+</p>
 
-> **SANDBOX demo: simulated payments, no real bitcoin.** The demo uses a fixed demo rate (40,000,000 XOF per BTC). Real Lightning was only exercised on regtest (spike S1).
+<p align="center">
+  An open-source Lightning point of sale that keeps working when the merchant's phone is offline.
+</p>
 
-Jaay (Wolof for "to sell", spelling to be confirmed by a Wolof speaker) is an open-source point of sale that runs as a PWA on the merchant's own phone and takes Lightning payments with the phone in airplane mode. Built for the Dakar Bitcoin Hack by BTrust.
+<p align="center">
+  <a href="https://github.com/lijnati/Jaay/actions/workflows/ci.yml"><img src="https://github.com/lijnati/Jaay/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-black" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D22.13-black" alt="Node 22.13 or newer">
+  <img src="https://img.shields.io/badge/network-regtest%20%7C%20signet-black" alt="regtest or signet only">
+  <img src="https://img.shields.io/badge/demo-SANDBOX-black" alt="SANDBOX demo">
+</p>
 
-## The problem
+<p align="center">
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#security">Security</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="docs/THREAT_MODEL.md">Threat model</a> ·
+  <a href="docs/README.fr.md">Français</a>
+</p>
 
-A seller who takes Bitcoin over Lightning normally needs a data connection on the selling phone at the moment of sale, or a dedicated hardware device. Market sellers whose mobile data drops or runs out mid-sale lose the sale. Pricing is a second problem: a price in sats fixed while offline can be stale when the customer pays. [needs real evidence from Nahtty's interviews]
+> [!IMPORTANT]
+> **The demo is SANDBOX only: simulated payments, no real bitcoin, and a fixed demo exchange rate.** Jaay accepts regtest, signet and testnet invoices only and refuses mainnet. Real Lightning was exercised on regtest (Alby Hub on LND, see [spikes/NOTES.md](spikes/NOTES.md)).
 
-## What Jaay does
+---
 
-1. The merchant types a price in XOF. The phone, even in airplane mode, shows an LNURL-pay QR that carries an AES-256-GCM sealed payload (amount, random sale id, currency; device id as AAD).
-2. The customer scans with any LNURL-pay wallet. The server decrypts, converts XOF to sats at scan time (Kraken with Coinbase fallback, 2 percent divergence check, 120 s quote lock, rounded up to a whole sat) and creates the invoice on the merchant's own wallet through a receive-only connection.
-3. After payment the wallet shows a receipt link (LUD-09 url success action). The receipt page shows a 6-digit confirm code only once the invoice has settled.
-4. The merchant types the code. The phone recomputes it from the sale id with a device-key HMAC and compares. When online, the phone reconciles every sale with the server and flags any sale confirmed without a payment.
+## Overview
 
-```mermaid
-sequenceDiagram
-    participant M as Merchant phone (PWA)
-    participant C as Customer wallet
-    participant S as Jaay server
-    participant W as Merchant wallet
-    M->>M: Type price in XOF, seal payload, show QR (offline)
-    C->>M: Scan QR (LNURL-pay)
-    C->>S: Request invoice with sealed payload
-    S->>S: Decrypt, convert XOF to sats, lock quote
-    S->>W: make_invoice (receive-only)
-    S-->>C: Invoice and receipt link (LUD-09)
-    C->>W: Pay over Lightning
-    C->>S: Open receipt link
-    S->>W: lookup_invoice (settled?)
-    S-->>C: Receipt with 6-digit code (only if settled)
-    M->>M: Merchant types code, phone recomputes and compares
-    M->>S: Later, online: reconcile all sales
-```
+Jaay (Wolof for "to sell") is a point of sale that runs as a progressive web app on the merchant's own phone. The merchant types a price in West African CFA francs (XOF) and shows a QR code; the customer pays from any LNURL-pay Lightning wallet. **The merchant's phone needs no network at the moment of sale.** It confirms the payment with a 6-digit code from the customer's receipt and reconciles every sale with the server when it is back online.
 
-## 60-second quickstart
+Built for the Dakar Bitcoin Hack by BTrust.
 
-Needs Node 22.13 or newer and pnpm 11 via corepack.
+### Highlights
+
+| | |
+|---|---|
+| **Offline selling** | After the first load, the merchant app sells, shows QR codes and confirms codes in airplane mode. A service worker serves the whole app; sales live in IndexedDB. |
+| **XOF pricing, sats at scan time** | The QR carries the XOF amount. The server converts to sats when the customer scans, with a 120 second quote lock, so an offline price never becomes a stale sats price. |
+| **Settlement-gated receipt** | The customer's wallet shows a receipt link (LUD-09). The 6-digit confirm code appears on it only after the invoice settles. |
+| **Receive-only wallet** | The server can only create and look up invoices on the merchant's wallet (Nostr Wallet Connect or LNbits invoice key). Connections that can spend are refused. There is no send button anywhere. |
+| **Reconciliation** | Back online, the phone checks every sale with the server and flags any sale confirmed without a payment. |
+| **No extra hardware** | Runs on the phone the merchant already has. 32.4 KB gzipped first load. French first, English toggle. |
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screens/sell.png" width="180" alt="Sell screen"><br><sub>Sell</sub></td>
+    <td align="center"><img src="docs/screens/confirm.png" width="180" alt="Check code screen"><br><sub>Check code</sub></td>
+    <td align="center"><img src="docs/screens/wallet.png" width="180" alt="Wallet screen"><br><sub>Wallet</sub></td>
+    <td align="center"><img src="docs/screens/receipt-after.png" width="180" alt="Customer receipt"><br><sub>Customer receipt</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screens/fr/sell.png" width="180" alt="Écran Vendre"><br><sub>Vendre</sub></td>
+    <td align="center"><img src="docs/screens/fr/confirm.png" width="180" alt="Écran Vérifier le code"><br><sub>Vérifier le code</sub></td>
+    <td align="center"><img src="docs/screens/fr/wallet.png" width="180" alt="Écran Portefeuille"><br><sub>Portefeuille</sub></td>
+    <td align="center"><img src="docs/screens/fr/receipt-after.png" width="180" alt="Reçu client"><br><sub>Reçu</sub></td>
+  </tr>
+</table>
+
+<sub>SANDBOX data, 360 px wide, captured by the end-to-end test suite.</sub>
+
+## Quickstart
+
+**Requirements:** Node 22.13 or newer, pnpm 11 (through Corepack), git. No Docker, no database server, no internet after install.
 
 ```bash
 corepack enable
@@ -52,112 +83,158 @@ pnpm demo
 
 | URL | What it is |
 |---|---|
-| http://localhost:8787/app/ | Merchant app |
+| http://localhost:8787/app/ | Merchant app (installable PWA) |
 | http://localhost:8787/sim/ | SANDBOX customer wallet simulator |
 | http://localhost:8787/healthz | Health check |
 
-Everything here is SANDBOX: simulated payments, no real bitcoin, fixed demo rate labeled "fixed demo rate" everywhere. `pnpm smoke` checks it. Details and a step by step tour: [docs/QUICKSTART.md](docs/QUICKSTART.md).
-
-## Screenshots
-
-Sandbox data, 360 px wide.
-
-| | Sell | Check code | Wallet | Receipt after payment |
-|---|---|---|---|---|
-| EN | ![Sell](docs/screens/sell.png) | ![Check code](docs/screens/confirm.png) | ![Wallet](docs/screens/wallet.png) | ![Receipt after payment](docs/screens/receipt-after.png) |
-| FR | ![Vendre](docs/screens/fr/sell.png) | ![Vérifier le code](docs/screens/fr/confirm.png) | ![Portefeuille](docs/screens/fr/wallet.png) | ![Reçu après paiement](docs/screens/fr/receipt-after.png) |
+In the merchant app, tap **Try the sandbox demo shop**, sell 2,500 XOF, open **Demo tools** under the QR and pay from the simulator, then type the code from the receipt. The full guided tour is in [docs/QUICKSTART.md](docs/QUICKSTART.md). Check a running instance with `pnpm smoke`.
 
 ## How it works
 
-1. The phone holds non-extractable device keys created at setup.
-2. A sale is a random sale id plus an XOF amount, sealed with AES-256-GCM and a random 96-bit IV, device id as AAD.
-3. The QR is an LNURL-pay link that carries the sealed payload. It needs no network to draw.
-4. The server opens the payload, and any tamper fails closed with one uniform error.
-5. The server converts XOF to sats at scan time and creates the invoice on the merchant wallet (NWC NIP-47, LNbits invoice key, or a labeled SANDBOX backend).
-6. The receipt page is server-rendered HTML with no JavaScript and shows the code only after settlement.
-7. The phone derives the code from the sale id with a device-key HMAC. It is never in the QR and never on the merchant screen.
-8. When online, the phone reconciles each sale over the HMAC-signed device API.
-
-Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Endpoints: [docs/API.md](docs/API.md).
-
-## Security design
-
-Full threat model, 27 threats each naming tests: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
-
-- The sealed QR payload fails closed on any tamper.
-- One uniform error for every LNURL failure, so a failing check is never revealed.
-- The confirm code appears only after settlement, is never in the payload, and allows 3 attempts per sale (3 in 1,000,000 odds per sale for a guesser). The counter is saved before each check.
-- A reconcile backstop flags sales confirmed but never paid.
-- The receive-only wallet connection is refused if it can spend.
-- The device API is signed with HMAC, uses the server clock and has nonce replay protection.
-- Secrets are sealed at rest with AES-256-GCM, and no secrets appear in logs (a log-scrubber test enforces it).
-- Strict CSP, no third-party scripts, no CDN, non-extractable keys on the phone.
-
-## Wallet implementation
-
-The wallet side is receive-only. The server creates and looks up invoices only (`make_invoice`, `lookup_invoice`). Enrollment refuses any NWC connection that grants `pay_invoice` or other spend methods, and the server re-checks the live permission list on every Wallet refresh, so the screen warns if spending was granted later. Receive-only is enforced by the wallet service (for example Alby Hub app scopes), not by Jaay or the protocol.
-
-The Wallet screen shows server-computed totals (today and all time, in XOF and sats), the last payments tagged paid, paid late or demo, the badge "Receive only. This app and the server cannot spend.", and a collapsed Details section (spend permissions detected, backend type). There is no send button anywhere.
-
-## Low bandwidth
-
-Measured by the e2e suite:
-
-- PWA first load: 32.4 KB gzipped (budget 150 KB).
-- Customer simulator: 10.7 KB gzipped (budget 40 KB).
-- Receipt page: under 15 KB with no JavaScript (asserted by a test).
-- The POS shell works offline after the first load, including a cold start offline (Playwright test with the browser offline).
-
-Lighthouse and throttled-network measurements: NOT RUN.
-
-## Prior art and what is new
-
-Jaay builds on earlier work and does not claim to be the first offline Lightning point of sale.
-
-- [LNURLPoS](https://github.com/arcbtc/LNURLPoS) by arcbtc is a hardware PoS (ESP32 TTGO T-Display). Its offline device idea: "The burden of connectivity can be taken away from the point-of-sale and given to the phone." Its README lists currency denomination as an issue, "being offline sats becomes too volatile". After payment the customer gets a PIN that the merchant compares with the PIN on the device. Jaay's confirm-code idea comes from this lineage.
-- [LNbits TPoS](https://github.com/lnbits/tpos) is "A shareable Bitcoin Lightning Point of Sale that runs directly in your browser." You host an LNbits server and give a TPoS to a vendor, and it can be set to a fiat currency.
-- [Blink Terminal](https://www.blink.sv/en/blink-terminal) is "A point of sale that runs in any browser." and works with custodial and non-custodial Blink accounts.
-- [Wallet of Satoshi POS](https://www.walletofsatoshi.com/pos) is a POS app for shops, cafes and market stalls.
-- [LUD-09](https://github.com/lnurl/luds/blob/luds/09.md) defines the url success action with a description. The url must be on the callback's domain. Jaay uses it for the receipt link.
-
-What is new in Jaay's design: no extra hardware (a PWA on the merchant's existing phone); an XOF price sealed offline and converted to sats by the server at scan time with a quote lock; a settlement-gated receipt with the code; an offline ledger with reconciliation; a receive-only wallet connection; and a written threat model where every row names a test.
-
-## Known limits
-
-- Offline confirmation relies on the code. Reconcile detects fraud after the fact.
-- A compromised running server can derive codes and see amounts. It cannot spend from a receive-only wallet.
-- A stolen unlocked phone can create sales and confirm within the attempt cap. There is no device revoke button yet.
-- There is no app lock or passcode, only the phone OS lock.
-- The base URL is not authenticated by the token, so the host is shown under every QR.
-- Rate limits are per IP and in memory.
-- NOT RUN: Safari, Firefox, real phones, Docker compose, any hosting path.
-- Real wallets showing the receipt link were researched (spike S5) but tested only with the simulator.
-
-## Tests and verification
-
-- 127 protocol, 169 server, 146 merchant PWA and 33 simulator unit and property tests, with fast-check property and fuzz tests on a fixed seed.
-- Playwright e2e: 14 checks, green at 320, 360 and 412 px wide, including a no-horizontal-scroll check on every screen in EN and FR.
-- The threat matrix names 70 tests for 27 threats. `pnpm security:matrix` checks it and `pnpm test:security` runs only the security tests.
-
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm --filter @jaay/pos exec playwright install chromium   # once
-pnpm --filter @jaay/pos test:e2e
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as Merchant phone (offline)
+    participant C as Customer wallet
+    participant S as Jaay server
+    participant W as Merchant wallet
+    M->>M: Price in XOF, seal sale (AES-256-GCM), show QR
+    C->>S: Scan QR, request payment (LNURL-pay)
+    S->>S: Open sale, convert XOF to sats, lock quote 120 s
+    S->>W: make_invoice (receive-only connection)
+    S-->>C: Invoice and receipt link
+    C->>W: Pay over Lightning
+    C->>S: Open receipt link
+    S->>W: lookup_invoice
+    S-->>C: 6-digit code, only once settled
+    C-->>M: Customer reads the code aloud
+    M->>M: Recompute code from the sale id, confirm (3 attempts max)
+    M->>S: Later, online: signed reconcile of every sale
 ```
 
-Clean-clone results: [docs/VERIFY.md](docs/VERIFY.md). Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). Real Lightning (Alby Hub on regtest LND, receive-only NWC) was exercised in spike S1, see [spikes/NOTES.md](spikes/NOTES.md).
+1. **Sell.** The phone seals the amount, a random sale id and the currency with AES-256-GCM (random 96-bit IV, device id as associated data) and encodes it as an LNURL-pay QR. No network is used.
+2. **Price.** The server opens the sale, rejects anything tampered with one uniform error, and converts XOF to sats from two exchange sources (Kraken, Coinbase fallback) with a 2 percent divergence check, rounding up to a whole sat.
+3. **Invoice.** The server creates the invoice on the merchant's own wallet and checks it (network, exact amount, payment hash, description hash, expiry) before any wallet sees it.
+4. **Receipt.** After payment, the receipt page (server-rendered, no JavaScript, under 15 KB) shows the code. Before settlement it never does.
+5. **Confirm.** The phone derives the same code from the sale id with its own key and compares. The code is never in the QR and never displayed to the merchant.
+6. **Reconcile.** When online, the phone sends its sales to the server over an HMAC-signed API and flags any mismatch.
 
-## Roadmap beyond the hackathon
+## Architecture
 
-- Pilot with one Bitcoin-accepting merchant in Dakar [needs real evidence from Nahtty's interviews].
+```
+packages/protocol    Sale token, keys, confirm code, LNURL encoding. Pure TypeScript on Web Crypto; runs in the browser and on Node.
+apps/server          Hono on Node 22+. LNURL-pay endpoints, receipts, signed device API, FX, SQLite (node:sqlite).
+                     Wallet backends behind one interface: nwc (NIP-47), lnbits (invoice key), sandbox (labeled fake).
+apps/pos             Merchant PWA. Vanilla TypeScript and Vite, service worker, IndexedDB ledger, FR and EN.
+apps/customer-sim    SANDBOX customer wallet simulator for demos and tests. Clearly labeled, holds no secret.
+spikes/              Feasibility spikes (real NWC on regtest, offline PWA, FX, wallet behavior), with notes.
+```
+
+The server serves the merchant app at `/app/` and the simulator at `/sim/` from the same origin, under a strict Content Security Policy. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). HTTP API: [docs/API.md](docs/API.md).
+
+## Security
+
+Every claim below is backed by named tests. The [threat model](docs/THREAT_MODEL.md) covers 27 threats; `pnpm security:matrix` fails if any test it names is missing, and `pnpm test:security` runs exactly those tests.
+
+- **Tamper-proof sales.** Any change to the QR payload fails closed, with one uniform error that never reveals which check failed.
+- **Code gated by settlement.** The confirm code is derived, never stored or carried in the payload, and shown only after the invoice settles.
+- **Guessing is capped.** 3 attempts per sale, counter saved before each check: a guesser's odds are 3 in 1,000,000 per sale, and reconciliation flags any unpaid confirmation.
+- **Receive-only, enforced at enrollment and re-checked.** Spend-capable wallet connections are refused, and live permissions are re-checked on every Wallet refresh.
+- **Signed device API.** HMAC over method, path, body, timestamp and nonce; the server clock decides; replayed nonces are refused.
+- **Secrets sealed at rest** with AES-256-GCM under a master key, bound to their row and field; no secret in the database file or in logs (log-scrubber test).
+- **Hardened web surface.** Non-extractable keys on the phone, strict CSP, no third-party scripts, no CDN, no analytics.
+- **Fuzzed.** Property and fuzz tests (fast-check, fixed seed) on the protocol, every public endpoint and reconciliation.
+
+Report a vulnerability privately: [SECURITY.md](SECURITY.md). Phone-side details: [docs/SECURITY_PWA.md](docs/SECURITY_PWA.md).
+
+## Configuration
+
+The server is configured through environment variables. A commented template is in [apps/server/.env.example](apps/server/.env.example).
+
+| Variable | Purpose |
+|---|---|
+| `BASE_URL` | Public origin wallets call (https; http only on localhost). |
+| `PORT` | Listen port, default 8787. |
+| `DB_PATH` | SQLite file; in memory in development, `/data/jaay.sqlite` in production. |
+| `JAAY_MASTER_KEY` | 32 random bytes (base64) sealing secrets at rest. Required in production. |
+| `JAAY_ENROLL_TOKEN` | Operator bearer token for enrolling real wallets. Required in production unless sandbox-only. |
+| `JAAY_NETWORK` | `regtest` (default), `signet` or `testnet`. Mainnet is never accepted. |
+| `NWC_ALLOWED_RELAYS`, `LNBITS_ALLOWED_HOSTS` | Anti-SSRF allowlists for wallet connections. |
+| `SANDBOX` | `1` enables the labeled fake backend, the demo shop and `/sandbox` routes. |
+| `JAAY_FX_FIXED_XOF_PER_BTC` | Fixed demo rate, accepted only with `SANDBOX=1` and labeled everywhere. |
+| `JAAY_POS_DIR`, `JAAY_SIM_DIR` | Build folders served at `/app/` and `/sim/`. |
+| `TRUST_PROXY` | `1` to read the client IP from `X-Forwarded-For` behind your own proxy. |
+
+Deployment notes for Fly.io, Railway and Render (drafts, not yet deployed): [docs/DEPLOY.md](docs/DEPLOY.md).
+
+## Development
+
+```bash
+pnpm lint          # eslint
+pnpm typecheck     # tsc in every package
+pnpm test          # unit, property and fuzz tests, plus the threat-matrix check
+pnpm build         # protocol, server bundle, PWA, simulator
+pnpm test:security # only the tests named by the threat model
+
+pnpm --filter @jaay/pos exec playwright install chromium   # once
+pnpm --filter @jaay/pos test:e2e                           # Playwright, offline flows included
+```
+
+| Suite | Tests |
+|---|---|
+| Protocol | 127 |
+| Server | 169 |
+| Merchant app | 146 |
+| Customer simulator | 33 |
+| End-to-end (Playwright) | 14 checks, green at 320, 360 and 412 px, EN and FR |
+
+A clean clone reaches a green end-to-end run in about five minutes; the measured steps and the determinism checks under full CPU load are in [docs/VERIFY.md](docs/VERIFY.md). Dependencies, licenses and audit results: [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md).
+
+## Performance
+
+| Budget | Measured |
+|---|---|
+| Merchant app, first load (HTML, JS, CSS, service worker, manifest, icons) | 32.4 KB gzipped (budget 150 KB) |
+| Customer simulator | 10.7 KB gzipped (budget 40 KB) |
+| Receipt page | 1,360 bytes, no JavaScript (budget 15 KB) |
+| Offline | Full app after first load, including a cold start in airplane mode |
+
+Lighthouse and throttled-network timings have not been measured yet.
+
+## Prior art
+
+Jaay builds on earlier Lightning point-of-sale work and does not claim to be the first offline one.
+
+- **[LNURLPoS](https://github.com/arcbtc/LNURLPoS)** by arcbtc: an offline hardware point of sale (ESP32 TTGO T-Display) where the customer receives a PIN after payment that the merchant compares with the device. Its README notes that offline sats pricing "becomes too volatile". Jaay's confirm code comes from this lineage.
+- **[LNbits TPoS](https://github.com/lnbits/tpos)**: a shareable browser point of sale on a self-hosted LNbits server, with fiat currency support.
+- **[Blink Terminal](https://www.blink.sv/en/blink-terminal)**: a browser point of sale for Blink accounts, custodial or not.
+- **[Wallet of Satoshi POS](https://www.walletofsatoshi.com/pos)**: a point-of-sale app for shops and market stalls.
+
+**What Jaay adds:** no dedicated hardware; an XOF price sealed offline and converted at scan time with a quote lock; a receipt that reveals the code only after settlement (LUD-09); an offline ledger with reconciliation; a receive-only wallet connection that is refused if it can spend; and a threat model in which every threat names its tests.
+
+## Known limitations
+
+- Offline confirmation relies on the code. Reconciliation detects a fraud after the phone reconnects; it does not prevent it.
+- A compromised running server can derive codes and see amounts. It still cannot spend from a receive-only wallet. Self-hosting is the mitigation.
+- Receive-only is enforced by the wallet service (for example Alby Hub app permissions), not by the protocol.
+- No device revocation button and no app passcode yet; a stolen unlocked phone can create sales and confirm within the attempt cap.
+- Rate limits are per IP and in memory.
+- Not yet tested: real phones, Safari and Firefox, real wallets with the receipt link (the simulator is), Docker, a public deployment.
+
+## Roadmap
+
+- Pilot with a Bitcoin-accepting merchant in Dakar.
 - Test real wallets on signet with the receipt link.
-- Device revoke and a passcode-wrapped key.
-- Wolof strings reviewed by a native speaker.
-- Stretch: signed receipt as a Nostr event.
+- Device revocation and a passcode-protected key.
+- Wolof interface strings reviewed by native speakers.
+- Signed receipts as Nostr events.
 
-## License and credits
+Project log and milestones: [docs/ROADMAP.md](docs/ROADMAP.md).
 
-MIT, see [LICENSE](LICENSE). Copyright Yegetaneh Firew. Built for the Dakar Bitcoin Hack by BTrust. French overview: [docs/README.fr.md](docs/README.fr.md). Security reports: [SECURITY.md](SECURITY.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: no mainnet, no secrets in the repository, tests first for protocol, crypto and authentication code.
+
+## License
+
+[MIT](LICENSE) © 2026 Yegetaneh Firew.
