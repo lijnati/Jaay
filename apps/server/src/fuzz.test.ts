@@ -123,6 +123,17 @@ describe("protocol properties", () => {
       runs(300),
     );
   });
+
+  test("a confirm code for one sale does not confirm another sale (no reuse between customers)", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.uint8Array({ minLength: 8, maxLength: 8 }), fc.uint8Array({ minLength: 8, maxLength: 8 }), async (x, y) => {
+        fc.pre(b64u(x) !== b64u(y));
+        // A coincidence has probability 1e-6 per pair; the fixed seed makes this run reproducible either way.
+        expect(await verifyConfirmCode(keys, b64u(y), await deriveConfirmCode(keys, b64u(x)))).toBe(false);
+      }),
+      runs(300),
+    );
+  });
 });
 
 // ---------- server: random requests never 5xx, never leak a stack or which check failed ----------

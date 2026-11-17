@@ -6,16 +6,19 @@
   "license": "MIT",
   "packageManager": "pnpm@11.13.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13",
+    "pnpm": ">=11"
   },
   "scripts": {
     "lint": "eslint .",
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test",
+    "test": "pnpm -r run test && node scripts/check-threat-matrix.mjs",
     "build": "pnpm -r run build",
     "format": "prettier --write .",
     "demo": "node scripts/demo.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "security:matrix": "node scripts/check-threat-matrix.mjs",
+    "test:security": "node scripts/check-threat-matrix.mjs --run"
   },
   "devDependencies": {
     "eslint": "^10.14.0",
