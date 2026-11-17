@@ -3,13 +3,13 @@
 import "./styles.css";
 import { buildSaleLnurl, encodeSale, toQrString, type DeviceKeys } from "@jaay/protocol";
 import { devicePost } from "./auth";
-import { tryConfirm, MAX_ATTEMPTS } from "./confirm";
+import { attemptsLeftText, confirmText, tryConfirm, MAX_ATTEMPTS, type ConfirmResult } from "./confirm";
 import { allSales, getConfig, getKeys, getKv, getSale, putConfig, putKv, putSale, wipe, type DeviceConfig, type SaleRec } from "./db";
 import { enrollDevice, parseEnrollPayload, readEnrollFragment, type EnrollPayload } from "./enroll";
 import { getLang, initLang, setLang, t, type Key, type Lang } from "./i18n";
 import { loadDemo, removeDemo, sandboxHelpers } from "./demo";
 import { transition, type LedgerStatus } from "./ledger";
-import { formatXof } from "./money";
+import { formatXof, groupDigits } from "./money";
 import { renderQr } from "./qr";
 import { runReconcile } from "./reconcile";
 
@@ -22,7 +22,7 @@ interface WalletCache {
     receiveOnly: boolean;
     backend: { label: string; available: boolean; spendMethods: string[] | null; balanceMsat: string | null };
     totals: { today: { xof: number; msat: string; count: number }; allTime: { xof: number; msat: string; count: number } };
-    recent: { sid: string; amountXof: number; paidAt: string; status: string }[];
+    recent: { sid: string; amountXof: number; paidAt: string; status: string; demo?: boolean }[];
   };
 }
 
@@ -37,7 +37,9 @@ const state: {
   enrollError: Key | null;
   filter: "all" | "open" | "attention" | "paid";
   recon: { kind: "idle" | "running" | "ok" | "fail" | "offline"; n?: number; at?: number };
-  confirmMsg: { kind: "ok" | "err"; key: Key } | null;
+  confirmMsg: ConfirmResult | null;
+  /** Keeps the collapsed sections open across re-renders. */
+  open: { demoTools: boolean; walletDetails: boolean };
   armed: string | null;
   updateWaiting: boolean;
   /** From GET /healthz: is this server a SANDBOX server (offers the demo shop)? */
@@ -53,6 +55,7 @@ const state: {
   filter: "all",
   recon: { kind: "idle" },
   confirmMsg: null,
+  open: { demoTools: false, walletDetails: false },
   armed: null,
   updateWaiting: false,
   serverSandbox: false,
@@ -72,6 +75,14 @@ function h(tag: string, attrs: Attrs = {}, ...kids: (Node | string | null | fals
   for (const k of kids) if (k !== null && k !== false && k !== undefined) el.append(k);
   return el;
 }
+/** A collapsed section whose open state survives re-renders. */
+function fold(id: string, which: keyof typeof state.open, title: string, ...kids: (Node | string | null | false | undefined)[]): HTMLElement {
+  const d = h("details", { id, open: state.open[which] }, h("summary", { text: title }), ...kids);
+  d.addEventListener("toggle", () => (state.open[which] = (d as HTMLDetailsElement).open));
+  return d;
+}
+/** Date and time without seconds, in the app language. */
+const when = (ms: number | string) => new Intl.DateTimeFormat(getLang(), { dateStyle: "short", timeStyle: "short" }).format(new Date(ms));
 const host = () => (state.config ? new URL(state.config.baseUrl).host : "");
 const now = () => Date.now();
 let ticker: ReturnType<typeof setInterval> | undefined;
@@ -267,6 +278,7 @@ function keypad(): HTMLElement {
 function sandboxButtons(helpers: ReturnType<typeof sandboxHelpers>): (HTMLElement | null)[] {
   if (!helpers) return [];
   return [
+    fold("demo-tools", "demoTools", t("demo.tools"),
     h("div", { class: "row" },
       h("button", {
         class: "btn secondary",
@@ -283,6 +295,7 @@ function sandboxButtons(helpers: ReturnType<typeof sandboxHelpers>): (HTMLElemen
       h("a", { class: "btn secondary", id: "open-sim", href: helpers.simUrl, target: "_blank", rel: "noopener noreferrer", text: t("demo.openSim") }),
     ),
     state.note && h("p", { class: `msg ${state.note.kind}`, id: "note", role: "status", text: state.note.text }),
+    ),
   ];
 }
 
@@ -320,14 +333,12 @@ async function sellScreen(): Promise<HTMLElement> {
   return h(
     "section",
     {},
-    h("p", { class: "amount", id: "sale-amount", text: formatXof(sale.amountXof) }),
+    h("p", { class: "amount sale", id: "sale-amount", text: formatXof(sale.amountXof) }),
     h("div", { class: "qrwrap" }, canvas),
+    h("p", { class: "scan", text: t("sell.scanHint") }),
     h("p", { class: "host", id: "host", text: t("sell.payTo", { host: host() }) }),
     count,
-    ...sandboxButtons(sandboxHelpers(c, sale.qr)),
     h("button", { class: "btn", id: "to-confirm", text: t("sell.enterCode"), onclick: () => ((state.screen = "confirm"), render()) }),
-    // Leaves this sale open in the ledger (several sales can be in flight) and goes back to the keypad.
-    h("button", { class: "btn secondary", id: "new-sale", text: t("sell.newSale"), onclick: async () => (await setActive(null), render()) }),
     h("button", {
       class: "btn danger",
       id: "cancel",
@@ -340,6 +351,9 @@ async function sellScreen(): Promise<HTMLElement> {
         render();
       },
     }),
+    // Leaves this sale open in the ledger (several sales can be in flight) and goes back to the keypad.
+    h("button", { class: "btn secondary", id: "new-sale", text: t("sell.newSale"), onclick: async () => (await setActive(null), render()) }),
+    ...sandboxButtons(sandboxHelpers(c, sale.qr)),
     !navigator.onLine && h("p", { class: "hint", text: t("sell.offlineOk") }),
   );
 }
@@ -347,33 +361,55 @@ async function sellScreen(): Promise<HTMLElement> {
 async function confirmScreen(): Promise<HTMLElement> {
   const rec = state.sid ? await getSale(state.sid) : undefined;
   if (!rec) return ((state.screen = "sell"), sellScreen());
-  const input = h("input", { class: "code", id: "code", inputmode: "numeric", autocomplete: "off", maxlength: "6", pattern: "[0-9]*", "aria-label": t("confirm.input") }) as HTMLInputElement;
-  input.addEventListener("input", () => (input.value = input.value.replace(/\D/g, "").slice(0, 6)));
-  const msg = state.confirmMsg;
-  const done = msg?.key === "confirm.ok";
-  const check = async () => {
-    const r = await tryConfirm(rec.sid, input.value, state.keys!, now());
-    const key: Key = r === "confirmed" ? "confirm.ok" : r === "wrong" ? "confirm.wrong" : r === "locked" ? "confirm.locked" : "confirm.refused";
-    state.confirmMsg = { kind: r === "confirmed" ? "ok" : "err", key };
+  const input = h("input", {
+    class: "code",
+    id: "code",
+    type: "text",
+    inputmode: "numeric",
+    autocomplete: "off",
+    maxlength: "6",
+    pattern: "[0-9]{6}",
+    required: true,
+    "aria-label": t("confirm.input"),
+    "aria-describedby": state.confirmMsg === null ? "attempts" : "result",
+  }) as HTMLInputElement;
+  const r = state.confirmMsg;
+  const done = r === "confirmed";
+  const checkBtn = h("button", { class: "btn", id: "check", disabled: true, text: t("confirm.check") }) as HTMLButtonElement;
+  // Only 6 digits can be submitted, so a half-typed code never spends an attempt.
+  input.addEventListener("input", () => {
+    input.value = input.value.replace(/\D/g, "").slice(0, 6);
+    checkBtn.disabled = !input.checkValidity();
+  });
+  checkBtn.addEventListener("click", async () => {
+    if (!input.checkValidity()) return;
+    state.confirmMsg = await tryConfirm(rec.sid, input.value, state.keys!, now());
     render();
-  };
+  });
+  // Sale identity: its number among that day's sales and its time, so the merchant checks the right one.
+  const startOfDay = new Date(rec.createdAt).setHours(0, 0, 0, 0);
+  const nth = (await allSales()).filter((s) => s.createdAt >= startOfDay && s.createdAt <= rec.createdAt).length;
+  const time = new Intl.DateTimeFormat(getLang(), { timeStyle: "short" }).format(new Date(rec.createdAt));
+  // The counter text comes from the persisted record (never from memory), so it matches after a reload.
+  const status = r === null ? (rec.attempts < MAX_ATTEMPTS ? attemptsLeftText(rec.attempts, t) : null) : confirmText(r, rec.attempts, t);
   return h(
     "section",
     {},
     h("h1", { text: t("confirm.title") }),
+    h("p", { class: "hint", id: "sale-id", text: t("confirm.sale", { n: nth, time }) }),
     h("p", { class: "amount", text: formatXof(rec.amountXof) }),
     !done && h("p", { class: "hint", text: t("confirm.ask") }),
     !done && input,
-    !done && h("button", { class: "btn", id: "check", text: t("confirm.check"), onclick: () => void check() }),
-    !done && rec.attempts < MAX_ATTEMPTS && h("p", { class: "hint", id: "attempts", text: t("confirm.left", { n: MAX_ATTEMPTS - rec.attempts }) }),
-    msg && h("p", { class: `msg ${msg.kind}`, id: "result", role: "status", text: t(msg.key) }),
+    status && h("p", { class: r === null ? "hint" : `msg ${done ? "ok" : "err"}`, id: r === null ? "attempts" : "result", role: "status", text: status }),
+    !done && checkBtn,
     h("button", {
       class: done ? "btn" : "btn secondary",
       id: "next",
-      text: t(done ? "confirm.next" : "sell.newSale"),
+      text: t(done ? "confirm.next" : "confirm.back"),
       onclick: async () => {
         if (done || !(await saleOnScreen())) await setActive(null);
-        state.screen = "sell";
+        // Back to sales keeps an open sale open: it stays in the ledger and on the Sell tab.
+        state.screen = done ? "sell" : "ledger";
         render();
       },
     }),
@@ -436,26 +472,17 @@ function ago(ms: number): string {
 
 async function walletScreen(): Promise<HTMLElement> {
   const cache = await getKv<WalletCache>("wallet");
-  const sats = (msat: string) => (BigInt(msat) / 1000n).toLocaleString();
+  const sats = (msat: string) => groupDigits(BigInt(msat) / 1000n);
   const d = cache?.data;
   const spend = d?.backend.spendMethods;
+  const tag = (cls: string, text: string) => h("span", { class: `st ${cls}`, text });
   return h(
     "section",
     {},
     h("h1", { text: t("wallet.title") }),
-    h(
-      "div",
-      { class: "card" },
-      h("p", { id: "receive-only", text: t("wallet.receiveOnly") }),
-      d && h("p", { class: "hint", id: "spend-methods", text: t("wallet.spendMethods", { list: spend && spend.length ? spend.join(", ") : t("wallet.none") }) }),
-      d && h("p", { class: "hint", text: t("wallet.backend", { label: d.backend.label }) }),
-      d && !d.receiveOnly && h("p", { class: "msg err", text: t("wallet.notReceiveOnly") }),
-      d && !d.backend.available && h("p", { class: "msg warn", text: t("wallet.unavailable") }),
-      d?.backend.balanceMsat != null && h("p", { text: t("wallet.balance", { sats: sats(d.backend.balanceMsat) }) }),
-      d?.backend.balanceMsat != null && h("p", { class: "hint", text: t("wallet.balanceNote") }),
-    ),
     !d && h("p", { class: "hint", id: "wallet-empty", text: t("wallet.noData") }),
     cache && !navigator.onLine && h("p", { class: "msg warn", id: "wallet-age", text: t("wallet.cached", { age: ago(now() - cache.at) }) }),
+    d && !d.receiveOnly && h("p", { class: "msg err", text: t("wallet.notReceiveOnly") }),
     d &&
       h(
         "div",
@@ -467,13 +494,41 @@ async function walletScreen(): Promise<HTMLElement> {
         h("p", { class: "total", id: "wallet-all", text: formatXof(d.totals.allTime.xof) }),
         h("p", { class: "hint", text: t("wallet.sats", { sats: sats(d.totals.allTime.msat), n: d.totals.allTime.count }) }),
       ),
+    h("p", { class: "badges" }, h("span", { class: "badge", id: "receive-only", text: t("wallet.receiveOnly") })),
+    d &&
+      fold(
+        "wallet-details",
+        "walletDetails",
+        t("wallet.details"),
+        h("p", { class: "hint", id: "spend-methods", text: t("wallet.spendMethods", { list: spend && spend.length ? spend.join(", ") : t("wallet.none") }) }),
+        h("p", { class: "hint", text: t("wallet.backend", { label: d.backend.label }) }),
+        !d.backend.available && h("p", { class: "msg warn", text: t("wallet.unavailable") }),
+        d.backend.balanceMsat != null && h("p", { text: t("wallet.balance", { sats: sats(d.backend.balanceMsat) }) }),
+        d.backend.balanceMsat != null && h("p", { class: "hint", text: t("wallet.balanceNote") }),
+      ),
     d &&
       d.recent.length > 0 &&
       h(
         "section",
         {},
         h("h2", { text: t("wallet.recent") }),
-        h("ul", { class: "list" }, ...d.recent.map((r) => h("li", {}, h("span", { class: "when", text: new Date(r.paidAt).toLocaleString() }), h("span", { class: "amt", text: formatXof(r.amountXof) })))),
+        h(
+          "ul",
+          { class: "list", id: "wallet-recent" },
+          ...d.recent.map((r) =>
+            h(
+              "li",
+              { "data-demo": r.demo ? "1" : undefined },
+              h("div", {}, h("div", { class: "amt", text: formatXof(r.amountXof) }), h("div", { class: "when", text: when(r.paidAt) })),
+              h(
+                "div",
+                { class: "tags" },
+                r.demo && tag("st-demo", t("demo.badge")),
+                tag(`st-${r.status}`, t(r.status === "paid_late" ? "status.paid_late" : "status.paid")),
+              ),
+            ),
+          ),
+        ),
       ),
     h("button", { class: "btn secondary", id: "wallet-refresh", disabled: !navigator.onLine, text: t("wallet.refresh"), onclick: () => void loadWallet() }),
   );

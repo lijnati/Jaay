@@ -1,6 +1,7 @@
 // SANDBOX customer wallet (simulator). Every value is written with textContent. No secrets, no auto-open.
 import "../../pos/src/styles.css";
 import "./sim.css";
+import { groupDigits } from "../../pos/src/money";
 import { initLang, t, toggleLang } from "./i18n";
 import { fetchPayRequest, invoiceSummary, parseInput, requestInvoice, sandboxPay, successLink, WalletError, type PayRequest } from "./wallet";
 
@@ -27,7 +28,8 @@ const state: { input: string; pay: PayRequest | null; steps: HTMLElement[]; raw:
 };
 let stopCamera: (() => void) | null = null;
 
-const sats = (msat: string | number) => (BigInt(msat) / 1000n).toLocaleString();
+// Same digit grouping as the merchant app (non-breaking spaces).
+const sats = (msat: string | number) => groupDigits(BigInt(msat) / 1000n);
 const link = (url: string, id: string) => h("a", { href: url, id, target: "_blank", rel: "noopener noreferrer", text: url });
 
 async function read(): Promise<void> {
@@ -46,7 +48,7 @@ async function read(): Promise<void> {
         { class: "card", id: "step1" },
         h("h2", { text: t("step1") }),
         h("p", { id: "desc", text: pay.description }),
-        h("p", { class: "total", id: "msat", text: t("amount", { msat: pay.amountMsat, sats: sats(pay.amountMsat) }) }),
+        h("p", { class: "total", id: "msat", text: t("amount", { msat: groupDigits(pay.amountMsat), sats: sats(pay.amountMsat) }) }),
         pay.xof && h("p", { text: t("xof", { xof: pay.xof }) }),
         h("p", { class: "hint", text: t("fixedAmount") }),
       ),
@@ -72,7 +74,7 @@ async function pay(): Promise<void> {
         { class: "card", id: "step2" },
         h("h2", { text: t("step2") }),
         h("p", { text: t("network", { net: sum.network }) }),
-        h("p", { text: t("invAmount", { msat: sum.msat }) }),
+        h("p", { text: t("invAmount", { msat: groupDigits(sum.msat) }) }),
         h("p", { class: sum.descriptionHashOk ? "msg ok" : "msg err", text: t(sum.descriptionHashOk ? "hashOk" : "hashBad") }),
         h("p", { class: "mono", text: inv.pr }),
       ),

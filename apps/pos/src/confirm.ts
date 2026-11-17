@@ -3,10 +3,27 @@
 // IndexedDB BEFORE it is evaluated, so a reload or crash can never hand back a free attempt.
 import { verifyConfirmCode, type DeviceKeys } from "@jaay/protocol";
 import { getSale, putSale } from "./db";
+import type { Key } from "./i18n";
 import { confirmable, transition } from "./ledger";
 
 export const MAX_ATTEMPTS = 3;
 export type ConfirmResult = "confirmed" | "wrong" | "locked" | "refused";
+type T = (k: Key, v?: Record<string, number>) => string;
+
+/**
+ * What the merchant reads after an attempt. Built only from the result and the persisted attempt counter,
+ * never from the typed code, so it cannot reveal how close a guess was (Hard rule 7).
+ */
+export function confirmText(r: ConfirmResult, attemptsUsed: number, t: T): string {
+  if (r === "confirmed") return t("confirm.ok");
+  if (r === "locked") return t("confirm.locked");
+  if (r === "refused") return t("confirm.refused");
+  return `${t("confirm.wrong")} ${attemptsLeftText(attemptsUsed, t)}`;
+}
+export function attemptsLeftText(attemptsUsed: number, t: T): string {
+  const left = Math.max(0, MAX_ATTEMPTS - attemptsUsed);
+  return left === 1 ? t("confirm.left1") : t("confirm.left", { n: left });
+}
 
 // Attempts are serialized in this tab, so concurrent taps cannot both read the same counter.
 let chain: Promise<unknown> = Promise.resolve();

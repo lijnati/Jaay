@@ -1,6 +1,7 @@
 import { deriveConfirmCode, deriveKeys, generateDeviceSecret, type DeviceKeys } from "@jaay/protocol";
 import { beforeEach, expect, test } from "vitest";
-import { MAX_ATTEMPTS, tryConfirm } from "./confirm";
+import { attemptsLeftText, confirmText, MAX_ATTEMPTS, tryConfirm } from "./confirm";
+import { setLang, t } from "./i18n";
 import { getSale, putSale, resetConnection, type SaleRec } from "./db";
 
 let keys: DeviceKeys;
@@ -78,4 +79,26 @@ test("an expired (local window) sale can still be confirmed with the right code"
 
 test("unknown sale is refused", async () => {
   expect(await tryConfirm("BBBBBBBBBBB", "123456", keys, 1)).toBe("refused");
+});
+
+test("the error text never reveals closeness: a one-digit miss and a far miss read the same, in EN and FR", async () => {
+  const right = await deriveConfirmCode(keys, sid);
+  const near = right.slice(0, 5) + String((Number(right[5]) + 1) % 10);
+  const far = right.replace(/\d/g, (d) => String((Number(d) + 5) % 10));
+  for (const lang of ["en", "fr"] as const) {
+    setLang(lang);
+    const texts: string[] = [];
+    for (const guess of [near, far]) {
+      resetConnection();
+      await putSale(rec());
+      const r = await tryConfirm(sid, guess, keys, 1);
+      texts.push(confirmText(r, (await getSale(sid))!.attempts, t));
+    }
+    expect(texts[0]).toBe(texts[1]);
+    expect(texts[0]).toBe(lang === "en" ? "Code not accepted. 2 attempts left." : "Code refusé. Encore 2 essais.");
+    expect(texts[0]).not.toMatch(/digit|chiffre|close|proche|almost|presque/i);
+  }
+  setLang("en");
+  expect(confirmText("wrong", 2, t)).toBe("Code not accepted. 1 attempt left.");
+  expect(attemptsLeftText(0, t)).toBe("3 attempts left.");
 });
