@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <strong><a href="https://jaay-demo-qzku.onrender.com/app/">Live SANDBOX demo</a></strong> ·
   <a href="#quickstart">Quickstart</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#security">Security</a> ·
@@ -86,6 +87,8 @@ pnpm demo
 | http://localhost:8787/app/ | Merchant app (installable PWA) |
 | http://localhost:8787/sim/ | SANDBOX customer wallet simulator |
 | http://localhost:8787/healthz | Health check |
+
+Or try the hosted SANDBOX demo without installing anything: [merchant app](https://jaay-demo-qzku.onrender.com/app/) and [customer simulator](https://jaay-demo-qzku.onrender.com/sim/) (free hosting: the first visit after 15 idle minutes takes a moment to wake up, and the demo data resets on restart).
 
 In the merchant app, tap **Try the sandbox demo shop**, sell 2,500 XOF, open **Demo tools** under the QR and pay from the simulator, then type the code from the receipt. The full guided tour is in [docs/QUICKSTART.md](docs/QUICKSTART.md). Check a running instance with `pnpm smoke`.
 
@@ -165,7 +168,7 @@ The server is configured through environment variables. A commented template is 
 | `JAAY_POS_DIR`, `JAAY_SIM_DIR` | Build folders served at `/app/` and `/sim/`. |
 | `TRUST_PROXY` | `1` to read the client IP from `X-Forwarded-For` behind your own proxy. |
 
-Deployment notes for Fly.io, Railway and Render (drafts, not yet deployed): [docs/DEPLOY.md](docs/DEPLOY.md).
+The public SANDBOX demo runs on Render from [render.yaml](render.yaml). Deployment notes for Render, Fly.io and Railway: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Development
 
@@ -219,7 +222,7 @@ Jaay builds on earlier Lightning point-of-sale work and does not claim to be the
 - Receive-only is enforced by the wallet service (for example Alby Hub app permissions), not by the protocol.
 - No device revocation button and no app passcode yet; a stolen unlocked phone can create sales and confirm within the attempt cap.
 - Rate limits are per IP and in memory.
-- Not yet tested: real phones, Safari and Firefox, real wallets with the receipt link (the simulator is), Docker, a public deployment.
+- Not yet tested: real phones, Safari and Firefox, real wallets with the receipt link (the simulator is), Docker.
 
 ## Roadmap
 

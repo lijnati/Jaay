@@ -110,6 +110,10 @@ Unknown:
 
 ## Render
 
+**Deployed 2026-11-17: https://jaay-demo-qzku.onrender.com** (service `jaay-demo-qzku`, workspace team, Frankfurt, free plan, auto-deploy on push to `master`). Created through the Render Blueprint API from `render.yaml`; Render named the service `jaay-demo-qzku` because the Blueprint adds a random suffix to new resources, and `JAAY_BASE_URL` was set to that exact origin. The service answered `/healthz` about 30 s after the sync was approved.
+
+Verification against the live URL: `pnpm smoke https://jaay-demo-qzku.onrender.com` printed 13 PASS lines and `SMOKE OK` (app and simulator served with the strict CSP, SANDBOX and fixed demo rate reported, sandbox enrollment, LNURL request and callback, receipt without code before payment, simulated payment, receipt with the protocol-derived code, 1,360-byte receipt page, replay after payment refused). In a browser at 375 x 812, the demo shop enrolled against `jaay-demo-qzku.onrender.com` and a 2,500 F sale showed its QR, host and countdown. Real phones: NOT RUN.
+
 Config file: `render.yaml` at the repository root (Blueprint, native Node runtime, free plan, SANDBOX).
 
 Steps:

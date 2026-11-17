@@ -19,9 +19,8 @@ Feature freeze: 2026-11-18 18:00 EAT. After it, bug fixes only. Updated 2026-11-
 
 ## Not done or NOT RUN (owner action before or at submission, M7)
 
-- [ ] Make the GitHub repository public (it is private). The CI badge and workflow only work after that.
-- [ ] CI workflow: NOT RUN. First push after going public will run it; check the setup-node step reads `engines.node` from package.json (if not, set `node-version: 22`).
-- [ ] Deploy the SANDBOX build to a public HTTPS host: NOT RUN (drafts in docs/DEPLOY.md, [UNKNOWN] items listed there).
+- [x] GitHub repository public; CI green on GitHub Actions (Node 24 from `engines`, same test counts as local).
+- [x] SANDBOX build deployed on Render (free plan): https://jaay-demo-qzku.onrender.com, smoke test green against it (2026-11-17).
 - [ ] Real phones (mid-range Android, iOS), Safari, Firefox: NOT RUN.
 - [ ] Lighthouse and throttled-network measurements: NOT RUN (no PERFORMANCE.md exists; README says so).
 - [ ] Docker compose: NOT RUN (no Docker here).
