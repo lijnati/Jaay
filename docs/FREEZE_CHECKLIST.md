@@ -26,7 +26,7 @@ Feature freeze: 2026-11-18 18:00 EAT. After it, bug fixes only. Updated 2026-11-
 - [ ] Docker compose: NOT RUN (no Docker here).
 - [ ] Static analysis (semgrep, CodeQL): NOT RUN, not installable here.
 - [ ] Submission audit (`scripts/submission_audit.py` from the hackathon-winner skill): NOT RUN.
-- [ ] Interview evidence: every "[needs real evidence from Nahtty's interviews]" tag in README, PITCH, DEMO_SCRIPT and README.fr must be replaced with sourced evidence or removed before submission.
+- [x] Interview-evidence tags removed (2026-11-19); the docs make no claim about merchants or users.
 - [ ] French texts (README.fr, PITCH elevator pitch, UI strings) reviewed by a French speaker; Wolof name checked by a Wolof speaker.
 - [ ] Discord questions from the roadmap (solo entry, wallet eligibility, payouts, hosted sandbox) still unanswered.
 - [ ] Video: record last (DEMO_SCRIPT.md), under 3:00, with the regtest segment labeled.

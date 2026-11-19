@@ -4,7 +4,7 @@ Target 2:50, hard limit 3:00. English captions. Everything is SANDBOX (simulated
 
 | Time | On screen | What is said | Asset or command |
 |---|---|---|---|
-| 0:00 to 0:15 | Title "jaay, Sell without signal." Then a market stall mock caption: "Data drops mid-sale." | "Jaay is a point of sale for sellers whose data drops or runs out mid-sale. It takes Lightning payments with the phone in airplane mode." [needs real evidence from Nahtty's interviews] | Wordmark, caption slide. Add interview evidence only if Nahtty supplies it |
+| 0:00 to 0:15 | Title "jaay, Sell without signal." Then a market stall mock caption: "Data drops mid-sale." | "Jaay is a point of sale for sellers whose data drops or runs out mid-sale. It takes Lightning payments with the phone in airplane mode." | Wordmark, caption slide |
 | 0:15 to 0:35 | Merchant phone, airplane mode on, status bar visible. Keypad: 2,500 XOF. QR appears. SANDBOX banner visible | "Airplane mode, status bar visible. I type 2,500 XOF and the QR appears. No network used." | `pnpm demo`, open http://localhost:8787/app/. Screens: docs/screens/sell.png |
 | 0:35 to 0:55 | Customer simulator (SANDBOX label) shows the sats amount and the XOF price, then Pay (simulated) | "The customer scans with any LNURL-pay wallet. The server converts XOF to sats at scan time, with a quote lock. This is the sandbox simulator at a fixed demo rate." | http://localhost:8787/sim/. docs/screens/sim-request.png, sim-paid.png |
 | 0:55 to 1:15 | Receipt link opens, big 6-digit code. Merchant types it, PAID shown, airplane icon still visible | "After payment the wallet shows a receipt link. The code appears only now. The merchant types it and the phone confirms, still offline." | docs/screens/receipt-after.png, confirm.png |

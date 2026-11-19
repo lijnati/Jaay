@@ -4,7 +4,7 @@ Everything demoed is SANDBOX: simulated payments, no real bitcoin, fixed demo ra
 
 ## Inspiration
 
-Selling over Lightning usually needs a data connection on the selling phone, or a dedicated hardware device. Sellers whose data drops or runs out mid-sale are the case we care about [needs real evidence from Nahtty's interviews]. LNURLPoS showed that the burden of connectivity can be taken away from the point of sale and given to the phone. Its author also lists offline sats pricing as too volatile, and that is the open problem we wanted to solve. Jaay is Wolof for "to sell".
+Selling over Lightning usually needs a data connection on the selling phone, or a dedicated hardware device. Sellers whose data drops or runs out mid-sale are the case we designed for. LNURLPoS showed that the burden of connectivity can be taken away from the point of sale and given to the phone. Its author also lists offline sats pricing as too volatile, and that is the open problem we wanted to solve. Jaay is Wolof for "to sell".
 
 ## What it does
 
@@ -24,11 +24,11 @@ The PWA first load is 32.4 KB gzipped and the receipt page is under 15 KB with n
 
 ## What we learned
 
-Receive-only is enforced by the wallet service, so the app can only refuse and warn, not guarantee. A security claim is more convincing when a test is named next to it. Prior art matters: the confirm-code idea comes from the LNURLPoS lineage, and saying so is part of the design. Honest labels (SANDBOX, fixed demo rate, NOT RUN) cost little and keep trust. Merchant needs must come from real interviews [needs real evidence from Nahtty's interviews].
+Receive-only is enforced by the wallet service, so the app can only refuse and warn, not guarantee. A security claim is more convincing when a test is named next to it. Prior art matters: the confirm-code idea comes from the LNURLPoS lineage, and saying so is part of the design. Honest labels (SANDBOX, fixed demo rate, NOT RUN) cost little and keep trust. The next step is to check these assumptions with merchants in person.
 
 ## What is next
 
-Pilot with one Bitcoin-accepting merchant in Dakar [needs real evidence from Nahtty's interviews]. Test real wallets on signet with the receipt link. Add device revoke and a passcode-wrapped key. Have Wolof strings reviewed by a native speaker. Stretch: a signed receipt as a Nostr event.
+Pilot with one Bitcoin-accepting merchant in Dakar. Test real wallets on signet with the receipt link. Add device revoke and a passcode-wrapped key. Have Wolof strings reviewed by a native speaker. Stretch: a signed receipt as a Nostr event.
 
 ## Elevator pitch (English)
 

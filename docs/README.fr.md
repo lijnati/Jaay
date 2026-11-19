@@ -8,7 +8,7 @@ Jaay (« vendre » en wolof, orthographe à confirmer par une personne wolophone
 
 ## Le problème
 
-Pour vendre en Lightning, il faut en général une connexion de données sur le téléphone au moment de la vente, ou un appareil dédié. Un vendeur dont les données coupent ou s'épuisent en pleine vente perd la vente. [needs real evidence from Nahtty's interviews]
+Pour vendre en Lightning, il faut en général une connexion de données sur le téléphone au moment de la vente, ou un appareil dédié. Si les données coupent ou s'épuisent en pleine vente, le paiement ne peut pas se faire.
 
 ## Comment ça marche
 
