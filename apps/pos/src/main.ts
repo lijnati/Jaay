@@ -10,6 +10,7 @@ import { getLang, initLang, setLang, t, type Key, type Lang } from "./i18n";
 import { loadDemo, removeDemo, sandboxHelpers } from "./demo";
 import { transition, type LedgerStatus } from "./ledger";
 import { formatXof, groupDigits } from "./money";
+import { icon, mark, type IconName } from "./icons";
 import { renderQr } from "./qr";
 import { runReconcile } from "./reconcile";
 
@@ -179,6 +180,17 @@ function refreshIf(s: Screen): void {
 }
 
 // ---------- screens ----------
+function step(ic: IconName, title: Key, body: Key): HTMLElement {
+  return h("li", { class: "step" }, h("span", { class: "step-ill" }, icon(ic)), h("div", {}, h("strong", { text: t(title) }), h("span", { class: "muted", text: t(body) })));
+}
+/** A soft callout: icon plus text, colour never alone. */
+function callout(kind: "ok" | "err" | "warn", text: string, attrs: Attrs = {}): HTMLElement {
+  return h("p", { ...attrs, class: `msg ${kind}${attrs.class ? ` ${String(attrs.class)}` : ""}` }, icon(kind === "ok" ? "check" : "alert"), h("span", { text }));
+}
+const STATUS_ICON: Record<string, IconName> = {
+  open: "clock", expired: "clock", confirmed: "check", locked: "lock", cancelled: "x", paid: "check", paid_late: "check", unpaid: "alert", mismatch: "alert", demo: "flask",
+};
+
 function enrollScreen(): HTMLElement {
   const p = state.enrollParsed;
   const input = h("textarea", { id: "enroll-input", "aria-label": t("enroll.title"), autocomplete: "off", spellcheck: "false" }) as HTMLTextAreaElement;
@@ -220,13 +232,10 @@ function enrollScreen(): HTMLElement {
     }
     render();
   };
-  return h(
-    "section",
-    {},
-    h("h1", { text: t("enroll.title") }),
-    state.serverSandbox &&
-      !p &&
-      h("div", { class: "card" }, h("button", { class: "btn", id: "demo-shop", text: t("demo.tryShop"), onclick: () => void demoShop() }), h("p", { class: "hint", text: t("demo.tryHint") })),
+  const manual = h(
+    "details",
+    { id: "enroll-manual", class: "card fold", open: !state.serverSandbox || !!state.enrollText || state.enrollError === "enroll.invalid" },
+    h("summary", {}, icon("code"), h("span", { text: t("enroll.haveCode") })),
     h("p", { class: "hint", text: t("enroll.hint") }),
     input,
     h("button", {
@@ -244,18 +253,35 @@ function enrollScreen(): HTMLElement {
         render();
       },
     }),
-    state.enrollError && h("p", { class: "msg err", role: "alert", text: t(state.enrollError) }),
+  );
+  return h(
+    "section",
+    { class: "stack" },
+    !p &&
+      h(
+        "div",
+        { class: "welcome" },
+        h("p", { class: "eyebrow", text: t("enroll.title") }),
+        h("h1", { class: "tagline", text: t("welcome.tagline") }),
+        h("ol", { class: "steps" }, step("plane", "welcome.s1t", "welcome.s1"), step("bolt", "welcome.s2t", "welcome.s2"), step("check", "welcome.s3t", "welcome.s3")),
+      ),
+    state.serverSandbox &&
+      !p &&
+      h("div", { class: "cta" }, h("button", { class: "btn", id: "demo-shop", text: t("demo.tryShop"), onclick: () => void demoShop() }), h("p", { class: "hint", text: t("demo.tryHint") })),
+    state.enrollError && callout("err", t(state.enrollError), { role: "alert" }),
     p &&
       h(
         "div",
-        { class: "card" },
-        h("p", { text: t("enroll.server") }),
-        h("p", { class: "host", id: "enroll-host", text: new URL(p.baseUrl).host }),
+        { class: "card confirm-host" },
+        h("h1", { text: t("enroll.title") }),
+        h("p", { class: "muted", text: t("enroll.server") }),
+        h("p", { class: "hostchip big", id: "enroll-host" }, icon("link"), h("span", { text: new URL(p.baseUrl).host })),
         h("p", { class: "hint", text: t("enroll.details", { label: p.label, min: formatXof(p.minXof), max: formatXof(p.maxXof) }) }),
-        p.sandbox && h("p", { class: "msg warn", text: t("enroll.sandbox") }),
-        h("label", { class: "check" }, check, document.createTextNode(t("enroll.confirmHost", { host: new URL(p.baseUrl).host }))),
+        p.sandbox && callout("warn", t("enroll.sandbox")),
+        h("label", { class: "check" }, check, h("span", { text: t("enroll.confirmHost", { host: new URL(p.baseUrl).host }) })),
         submit,
       ),
+    manual,
   );
 }
 
@@ -271,7 +297,9 @@ function keypad(): HTMLElement {
     "div",
     { class: "keypad" },
     ...keys.map((k) =>
-      h("button", { "data-key": k, "aria-label": k === "<" ? t("sell.backspace") : undefined, text: k === "<" ? "⌫" : k, onclick: press(k) }),
+      k === "<"
+        ? h("button", { "data-key": k, "aria-label": t("sell.backspace"), onclick: press(k) }, icon("back"))
+        : h("button", { "data-key": k, text: k, onclick: press(k) }),
     ),
   );
 }
@@ -311,38 +339,50 @@ async function sellScreen(): Promise<HTMLElement> {
     const ok = amount >= c.minXof && amount <= c.maxXof;
     return h(
       "section",
-      {},
-      h("h1", { text: t("sell.title") }),
-      h("p", { class: "amount", id: "amount", text: formatXof(amount) }),
-      h("p", { class: "hint", text: t("sell.limits", { min: formatXof(c.minXof), max: formatXof(c.maxXof) }) }),
+      { class: "stack sell" },
+      h(
+        "div",
+        { class: "amount-card" },
+        h("h1", { class: "eyebrow", text: t("sell.title") }),
+        h("p", { class: `amount${amount ? "" : " zero"}`, id: "amount", text: formatXof(amount) }),
+        h("p", { class: "hint", text: t("sell.limits", { min: formatXof(c.minXof), max: formatXof(c.maxXof) }) }),
+      ),
       keypad(),
-      h("button", { class: "btn secondary", id: "clear", text: t("sell.clear"), onclick: () => ((state.digits = ""), render()) }),
       h("button", { class: "btn", id: "create", disabled: !ok, text: t("sell.create"), onclick: () => void createSale() }),
-      !navigator.onLine && h("p", { class: "hint", text: t("sell.offlineOk") }),
+      h("button", { class: "btn quiet", id: "clear", text: t("sell.clear"), onclick: () => ((state.digits = ""), render()) }),
+      !navigator.onLine && h("p", { class: "hint center", text: t("sell.offlineOk") }),
     );
   }
   const sale = rec;
   const canvas = h("canvas", { id: "qr", width: "300", height: "300", role: "img", "aria-label": t("sell.payTo", { host: host() }), "data-qr": sale.qr }) as HTMLCanvasElement;
   renderQr(canvas, sale.qr);
   const count = h("p", { class: "count", id: "count" });
+  const fill = h("span");
+  const bar = h("div", { class: "bar", "aria-hidden": "true" }, fill);
+  const total = Math.max(1, sale.windowEndsAt - sale.createdAt);
   const tick = () => {
     const left = sale.windowEndsAt - now();
     count.textContent = left > 0 ? t("sell.validFor", { time: `${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, "0")}` }) : t("sell.windowOver");
+    fill.style.setProperty("--p", String(Math.max(0, Math.min(1, left / total))));
   };
   tick();
   ticker = setInterval(tick, 1000);
   const armedCancel = state.armed === `cancel:${sale.sid}`;
   return h(
     "section",
-    {},
-    h("p", { class: "amount sale", id: "sale-amount", text: formatXof(sale.amountXof) }),
-    h("div", { class: "qrwrap" }, canvas),
-    h("p", { class: "scan", text: t("sell.scanHint") }),
-    h("p", { class: "host", id: "host", text: t("sell.payTo", { host: host() }) }),
-    count,
+    { class: "stack sale" },
+    h(
+      "div",
+      { class: "qrcard" },
+      h("p", { class: "amount sale", id: "sale-amount", text: formatXof(sale.amountXof) }),
+      h("div", { class: "qrbox" }, canvas),
+      h("p", { class: "scan", text: t("sell.scanHint") }),
+      h("p", { class: "hostchip", id: "host" }, icon("link"), h("span", { text: t("sell.payTo", { host: host() }) })),
+      h("div", { class: "countrow" }, count, bar),
+    ),
     h("button", { class: "btn", id: "to-confirm", text: t("sell.enterCode"), onclick: () => ((state.screen = "confirm"), render()) }),
     h("button", {
-      class: "btn danger",
+      class: `btn quiet danger${armedCancel ? " armed" : ""}`,
       id: "cancel",
       text: armedCancel ? t("sell.cancelConfirm") : t("sell.cancel"),
       onclick: async () => {
@@ -356,7 +396,7 @@ async function sellScreen(): Promise<HTMLElement> {
     // Leaves this sale open in the ledger (several sales can be in flight) and goes back to the keypad.
     h("button", { class: "btn secondary", id: "new-sale", text: t("sell.newSale"), onclick: async () => (await setActive(null), render()) }),
     ...sandboxButtons(sandboxHelpers(c, sale.qr)),
-    !navigator.onLine && h("p", { class: "hint", text: t("sell.offlineOk") }),
+    !navigator.onLine && h("p", { class: "hint center", text: t("sell.offlineOk") }),
   );
 }
 
@@ -394,16 +434,25 @@ async function confirmScreen(): Promise<HTMLElement> {
   const time = new Intl.DateTimeFormat(getLang(), { timeStyle: "short" }).format(new Date(rec.createdAt));
   // The counter text comes from the persisted record (never from memory), so it matches after a reload.
   const status = r === null ? (rec.attempts < MAX_ATTEMPTS ? attemptsLeftText(rec.attempts, t) : null) : confirmText(r, rec.attempts, t);
+  const dots = h(
+    "span",
+    { class: "dots", "aria-hidden": "true" },
+    ...Array.from({ length: MAX_ATTEMPTS }, (_, i) => h("i", { class: i < rec.attempts ? "used" : undefined })),
+  );
+  const statusEl =
+    status &&
+    (r === null
+      ? h("p", { class: "hint", id: "attempts", role: "status", text: status })
+      : h("p", { class: `msg ${done ? "ok success" : "err"}`, id: "result", role: "status" }, done ? icon("check", "ic draw") : icon("alert"), h("span", { text: status })));
   return h(
     "section",
-    {},
+    { class: "stack confirm" },
     h("h1", { text: t("confirm.title") }),
-    h("p", { class: "hint", id: "sale-id", text: t("confirm.sale", { n: nth, time }) }),
+    h("p", { class: "pill sale-id", id: "sale-id", text: t("confirm.sale", { n: nth, time }) }),
     h("p", { class: "amount", text: formatXof(rec.amountXof) }),
-    !done && h("p", { class: "hint", text: t("confirm.ask") }),
-    !done && input,
-    status && h("p", { class: r === null ? "hint" : `msg ${done ? "ok" : "err"}`, id: r === null ? "attempts" : "result", role: "status", text: status }),
-    !done && checkBtn,
+    done
+      ? statusEl
+      : h("div", { class: "card codecard" }, h("p", { class: "hint", text: t("confirm.ask") }), input, h("div", { class: "attempts" }, dots, statusEl), checkBtn),
     h("button", {
       class: done ? "btn" : "btn secondary",
       id: "next",
@@ -419,11 +468,15 @@ async function confirmScreen(): Promise<HTMLElement> {
 }
 
 const ATTENTION: LedgerStatus[] = ["locked", "mismatch", "unpaid"];
+const COUNTED: LedgerStatus[] = ["confirmed", "paid", "paid_late"];
+function chipEl(status: string, label: string, onclick?: () => void): HTMLElement {
+  return h(onclick ? "button" : "span", { class: `st st-${status}`, onclick }, icon(STATUS_ICON[status] ?? "clock"), h("span", { text: label }));
+}
 async function ledgerScreen(): Promise<HTMLElement> {
   let sales = await allSales();
   sales = await Promise.all(sales.map(expireIfOver));
   const startOfDay = new Date().setHours(0, 0, 0, 0);
-  const counted = sales.filter((s) => s.createdAt >= startOfDay && ["confirmed", "paid", "paid_late"].includes(s.status));
+  const counted = sales.filter((s) => s.createdAt >= startOfDay && COUNTED.includes(s.status));
   const shown = sales.filter((s) =>
     state.filter === "all" ? true : state.filter === "open" ? s.status === "open" || s.status === "expired" : state.filter === "attention" ? ATTENTION.includes(s.status) : s.status === "paid" || s.status === "paid_late",
   );
@@ -431,36 +484,55 @@ async function ledgerScreen(): Promise<HTMLElement> {
     h("button", { class: `chip${state.filter === f ? " active" : ""}`, id: `filter-${f}`, "aria-pressed": String(state.filter === f), text: t(key), onclick: () => ((state.filter = f), render()) });
   const r = state.recon;
   const reconText = r.kind === "running" ? t("ledger.reconciling") : r.kind === "ok" ? t("ledger.reconciled", { n: r.n ?? 0, time: new Date(r.at!).toLocaleTimeString() }) : r.kind === "fail" ? t("ledger.reconcileFailed") : r.kind === "offline" ? t("ledger.offline") : "";
+  // Group by local day, newest first; each day shows the total of what counts as sold.
+  const days = new Map<number, SaleRec[]>();
+  for (const s of [...shown].sort((a, b) => b.createdAt - a.createdAt)) {
+    const d = new Date(s.createdAt).setHours(0, 0, 0, 0);
+    days.set(d, [...(days.get(d) ?? []), s]);
+  }
+  const dayName = (d: number) => (d === startOfDay ? t("ledger.dayToday") : new Intl.DateTimeFormat(getLang(), { weekday: "short", day: "numeric", month: "short" }).format(new Date(d)));
+  const timeOf = (ms: number) => new Intl.DateTimeFormat(getLang(), { timeStyle: "short" }).format(new Date(ms));
   return h(
     "section",
-    {},
+    { class: "stack ledger" },
     h("h1", { text: t("ledger.title") }),
-    h("p", { class: "total", id: "day-total", text: t("ledger.today", { amount: formatXof(counted.reduce((a, s) => a + s.amountXof, 0)), n: counted.length }) }),
-    h("div", { class: "chips" }, chip("all", "ledger.filterAll"), chip("open", "ledger.filterOpen"), chip("attention", "ledger.filterAttention"), chip("paid", "ledger.filterPaid")),
-    h("button", { class: "btn secondary", id: "reconcile", disabled: r.kind === "running", text: t("ledger.reconcile"), onclick: () => void reconcile() }),
-    reconText && h("p", { class: r.kind === "fail" ? "msg warn" : "hint", id: "recon-status", role: "status", text: reconText }),
+    h("div", { class: "summary card" }, h("p", { class: "total", id: "day-total", text: t("ledger.today", { amount: formatXof(counted.reduce((a, s) => a + s.amountXof, 0)), n: counted.length }) })),
+    h("div", { class: "chips", role: "group", "aria-label": t("ledger.title") }, chip("all", "ledger.filterAll"), chip("open", "ledger.filterOpen"), chip("attention", "ledger.filterAttention"), chip("paid", "ledger.filterPaid")),
+    h("div", { class: "reconrow" },
+      h("button", { class: "btn secondary small", id: "reconcile", disabled: r.kind === "running", onclick: () => void reconcile() }, icon("refresh"), h("span", { text: t("ledger.reconcile") })),
+      reconText && h("p", { class: r.kind === "fail" ? "msg warn" : "hint", id: "recon-status", role: "status", text: reconText })),
     shown.length === 0
-      ? h("p", { class: "hint", text: t("ledger.empty") })
+      ? h("div", { class: "empty" }, h("span", { class: "empty-ill" }, icon("sales")), h("p", { class: "hint", text: t("ledger.empty") }))
       : h(
-          "ul",
-          { class: "list", id: "ledger" },
-          ...shown.map((s) => {
-            const note = s.status === "mismatch" ? (s.server?.status === "paid" || s.server?.status === "paid_late" ? t("ledger.cancelPaidNote") : t("ledger.mismatchNote")) : null;
-            const openable = s.status === "open" || s.status === "expired";
+          "div",
+          { id: "ledger" },
+          ...[...days.entries()].map(([d, list]) => {
+            const sum = list.filter((s) => COUNTED.includes(s.status)).reduce((a, s) => a + s.amountXof, 0);
             return h(
-              "li",
-              { "data-sid": s.sid, "data-status": s.status },
+              "section",
+              { class: "day" },
+              h("h2", { class: "dayhead" }, h("span", { text: dayName(d) }), h("span", { class: "daysum", text: formatXof(sum) })),
               h(
-                "div",
-                {},
-                h("div", { class: "amt", text: formatXof(s.amountXof) }),
-                h("div", { class: "when", text: new Date(s.createdAt).toLocaleString() }),
-                note && h("div", { class: "hint", text: note }),
-                s.demo && h("div", { class: "hint", text: `${t("demo.badge")}: ${s.demoLabel ?? ""}` }),
+                "ul",
+                { class: "list card" },
+                ...list.map((s) => {
+                  const note = s.status === "mismatch" ? (s.server?.status === "paid" || s.server?.status === "paid_late" ? t("ledger.cancelPaidNote") : t("ledger.mismatchNote")) : null;
+                  const openable = s.status === "open" || s.status === "expired";
+                  return h(
+                    "li",
+                    { "data-sid": s.sid, "data-status": s.status },
+                    h(
+                      "div",
+                      { class: "rowmain" },
+                      h("div", { class: "amt", text: formatXof(s.amountXof) }),
+                      h("div", { class: "when", text: timeOf(s.createdAt) }),
+                      note && h("div", { class: "hint callout err", text: note }),
+                      s.demo && h("div", { class: "hint", text: `${t("demo.badge")}: ${s.demoLabel ?? ""}` }),
+                    ),
+                    chipEl(s.status, t(`status.${s.status}` as Key), openable ? async () => ((state.screen = "confirm"), await setActive(s.sid), render()) : undefined),
+                  );
+                }),
               ),
-              openable
-                ? h("button", { class: `st st-${s.status}`, text: t(`status.${s.status}` as Key), onclick: async () => ((state.screen = "confirm"), await setActive(s.sid), render()) })
-                : h("span", { class: `st st-${s.status}`, text: t(`status.${s.status}` as Key) }),
             );
           }),
         ),
@@ -477,37 +549,26 @@ async function walletScreen(): Promise<HTMLElement> {
   const sats = (msat: string) => groupDigits(BigInt(msat) / 1000n);
   const d = cache?.data;
   const spend = d?.backend.spendMethods;
-  const tag = (cls: string, text: string) => h("span", { class: `st ${cls}`, text });
   return h(
     "section",
-    {},
+    { class: "stack wallet" },
     h("h1", { text: t("wallet.title") }),
-    !d && h("p", { class: "hint", id: "wallet-empty", text: t("wallet.noData") }),
-    cache && !navigator.onLine && h("p", { class: "msg warn", id: "wallet-age", text: t("wallet.cached", { age: ago(now() - cache.at) }) }),
-    d && !d.receiveOnly && h("p", { class: "msg err", text: t("wallet.notReceiveOnly") }),
+    !d && h("div", { class: "empty" }, h("span", { class: "empty-ill" }, icon("wallet")), h("p", { class: "hint", id: "wallet-empty", text: t("wallet.noData") })),
+    cache && !navigator.onLine && callout("warn", t("wallet.cached", { age: ago(now() - cache.at) }), { id: "wallet-age" }),
+    d && !d.receiveOnly && callout("err", t("wallet.notReceiveOnly")),
     d &&
       h(
         "div",
-        { class: "card" },
-        h("h2", { text: t("wallet.today") }),
-        h("p", { class: "total", id: "wallet-today", text: formatXof(d.totals.today.xof) }),
+        { class: "hero card" },
+        h("p", { class: "eyebrow", text: t("wallet.today") }),
+        h("p", { class: "total hero-amt", id: "wallet-today", text: formatXof(d.totals.today.xof) }),
         h("p", { class: "hint", text: t("wallet.sats", { sats: sats(d.totals.today.msat), n: d.totals.today.count }) }),
-        h("h2", { text: t("wallet.allTime") }),
+        h("div", { class: "divider" }),
+        h("p", { class: "eyebrow", text: t("wallet.allTime") }),
         h("p", { class: "total", id: "wallet-all", text: formatXof(d.totals.allTime.xof) }),
         h("p", { class: "hint", text: t("wallet.sats", { sats: sats(d.totals.allTime.msat), n: d.totals.allTime.count }) }),
       ),
-    h("p", { class: "badges" }, h("span", { class: "badge", id: "receive-only", text: t("wallet.receiveOnly") })),
-    d &&
-      fold(
-        "wallet-details",
-        "walletDetails",
-        t("wallet.details"),
-        h("p", { class: "hint", id: "spend-methods", text: t("wallet.spendMethods", { list: spend && spend.length ? spend.join(", ") : t("wallet.none") }) }),
-        h("p", { class: "hint", id: "backend", text: t("wallet.backend", { label: backendName(d.backend.kind) }) }),
-        !d.backend.available && h("p", { class: "msg warn", text: t("wallet.unavailable") }),
-        d.backend.balanceMsat != null && h("p", { text: t("wallet.balance", { sats: sats(d.backend.balanceMsat) }) }),
-        d.backend.balanceMsat != null && h("p", { class: "hint", text: t("wallet.balanceNote") }),
-      ),
+    h("p", { class: "badges" }, h("span", { class: "badge", id: "receive-only" }, icon("shield"), h("span", { text: t("wallet.receiveOnly") }))),
     d &&
       d.recent.length > 0 &&
       h(
@@ -516,34 +577,41 @@ async function walletScreen(): Promise<HTMLElement> {
         h("h2", { text: t("wallet.recent") }),
         h(
           "ul",
-          { class: "list", id: "wallet-recent" },
+          { class: "list card", id: "wallet-recent" },
           ...d.recent.map((r) =>
             h(
               "li",
               { "data-demo": r.demo ? "1" : undefined },
-              h("div", {}, h("div", { class: "amt", text: formatXof(r.amountXof) }), h("div", { class: "when", text: when(r.paidAt) })),
+              h("div", { class: "rowmain" }, h("div", { class: "amt", text: formatXof(r.amountXof) }), h("div", { class: "when", text: when(r.paidAt) })),
               h(
                 "div",
                 { class: "tags" },
-                r.demo && tag("st-demo", t("demo.badge")),
-                tag(`st-${r.status}`, t(r.status === "paid_late" ? "status.paid_late" : "status.paid")),
+                r.demo && chipEl("demo", t("demo.badge")),
+                chipEl(r.status === "paid_late" ? "paid_late" : "paid", t(r.status === "paid_late" ? "status.paid_late" : "status.paid")),
               ),
             ),
           ),
         ),
       ),
-    h("button", { class: "btn secondary", id: "wallet-refresh", disabled: !navigator.onLine, text: t("wallet.refresh"), onclick: () => void loadWallet() }),
+    d &&
+      fold(
+        "wallet-details",
+        "walletDetails",
+        t("wallet.details"),
+        h("p", { class: "hint", id: "spend-methods", text: t("wallet.spendMethods", { list: spend && spend.length ? spend.join(", ") : t("wallet.none") }) }),
+        h("p", { class: "hint", id: "backend", text: t("wallet.backend", { label: backendName(d.backend.kind) }) }),
+        !d.backend.available && callout("warn", t("wallet.unavailable")),
+        d.backend.balanceMsat != null && h("p", { text: t("wallet.balance", { sats: sats(d.backend.balanceMsat) }) }),
+        d.backend.balanceMsat != null && h("p", { class: "hint", text: t("wallet.balanceNote") }),
+      ),
+    h("button", { class: "btn secondary", id: "wallet-refresh", disabled: !navigator.onLine, onclick: () => void loadWallet() }, icon("refresh"), h("span", { text: t("wallet.refresh") })),
   );
 }
 
 async function settingsScreen(): Promise<HTMLElement> {
   const c = state.config!;
   const langSel = h("select", { id: "lang", "aria-label": t("settings.language") }, ...(["fr", "en"] as Lang[]).map((l) => h("option", { value: l, selected: getLang() === l, text: l === "fr" ? "Français" : "English" }))) as HTMLSelectElement;
-  langSel.addEventListener("change", () => {
-    setLang(langSel.value as Lang);
-    document.documentElement.lang = langSel.value;
-    render();
-  });
+  langSel.addEventListener("change", () => switchLang(langSel.value as Lang));
   const win = h("select", { id: "window", "aria-label": t("settings.window") }, ...[5, 10, 15, 30].map((n) => h("option", { value: String(n), selected: c.saleWindowMin === n, text: t("settings.minutes", { n }) }))) as HTMLSelectElement;
   win.addEventListener("change", async () => {
     state.config = { ...c, saleWindowMin: Number(win.value) };
@@ -553,56 +621,70 @@ async function settingsScreen(): Promise<HTMLElement> {
   label.value = c.label;
   const busy = await saleOnScreen();
   const armedWipe = state.armed === "wipe";
+  const group = (title: Key, ...kids: (Node | string | null | false | undefined)[]) => h("div", { class: "card group" }, h("h2", { text: t(title) }), ...kids);
   return h(
     "section",
-    {},
+    { class: "stack settings" },
     h("h1", { text: t("settings.title") }),
-    h("h2", { text: t("settings.language") }),
-    langSel,
-    h("h2", { text: t("settings.window") }),
-    win,
-    h("h2", { text: t("settings.label") }),
-    label,
-    h("button", {
-      class: "btn secondary",
-      text: t("settings.save"),
-      onclick: async () => {
-        const v = label.value.trim();
-        if (!/^[\p{L}\p{N} ._'-]{1,64}$/u.test(v)) return;
-        state.config = { ...state.config!, label: v };
-        await putConfig(state.config);
-        render();
-      },
-    }),
-    h("h2", { text: t("settings.host") }),
-    h("p", { class: "host", id: "settings-host", text: host() }),
-    h("p", { class: "hint", id: "version", text: t("settings.version", { v: __BUILD__ }) }),
-    h("p", { class: "hint", id: "update-status", text: !state.updateWaiting ? t("settings.upToDate") : busy ? t("settings.updateAfterSale") : t("settings.updateReady") }),
-    state.updateWaiting && h("button", { class: "btn", id: "update", disabled: busy, text: t("settings.update"), onclick: () => void applyUpdate() }),
-    ...(c.sandbox
-      ? [
-          h("h2", { text: t("demo.title") }),
-          h("button", { class: "btn secondary", id: "demo-load", text: t("demo.load"), onclick: () => void demoAction(loadDemo, "demo.loaded") }),
-          h("button", { class: "btn secondary", id: "demo-remove", text: t("demo.remove"), onclick: () => void demoAction(removeDemo, "demo.removed") }),
-          state.note && h("p", { class: `msg ${state.note.kind}`, id: "demo-note", role: "status", text: state.note.text }),
-        ]
-      : []),
-    h("button", {
-      class: "btn danger",
-      id: "wipe",
-      text: armedWipe ? t("settings.wipeConfirm") : t("settings.wipe"),
-      onclick: async () => {
-        if (!armedWipe) return ((state.armed = "wipe"), render());
-        state.armed = null;
-        await wipe();
-        state.config = undefined;
-        state.keys = undefined;
-        state.sid = null;
-        state.screen = "enroll";
-        render();
-      },
-    }),
+    group("settings.language", langSel),
+    group("settings.window", win),
+    group(
+      "settings.label",
+      label,
+      h("button", {
+        class: "btn secondary",
+        text: t("settings.save"),
+        onclick: async () => {
+          const v = label.value.trim();
+          if (!/^[\p{L}\p{N} ._'-]{1,64}$/u.test(v)) return;
+          state.config = { ...state.config!, label: v };
+          await putConfig(state.config);
+          render();
+        },
+      }),
+    ),
+    group(
+      "settings.about",
+      h("p", { class: "muted", text: t("settings.host") }),
+      h("p", { class: "hostchip", id: "settings-host" }, icon("link"), h("span", { text: host() })),
+      h("p", { class: "hint", id: "version", text: t("settings.version", { v: __BUILD__ }) }),
+      h("p", { class: "hint", id: "update-status", text: !state.updateWaiting ? t("settings.upToDate") : busy ? t("settings.updateAfterSale") : t("settings.updateReady") }),
+      state.updateWaiting && h("button", { class: "btn", id: "update", disabled: busy, text: t("settings.update"), onclick: () => void applyUpdate() }),
+    ),
+    c.sandbox &&
+      group(
+        "demo.title",
+        h("button", { class: "btn secondary", id: "demo-load", text: t("demo.load"), onclick: () => void demoAction(loadDemo, "demo.loaded") }),
+        h("button", { class: "btn secondary", id: "demo-remove", text: t("demo.remove"), onclick: () => void demoAction(removeDemo, "demo.removed") }),
+        state.note && h("p", { class: `msg ${state.note.kind}`, id: "demo-note", role: "status", text: state.note.text }),
+      ),
+    h(
+      "div",
+      { class: "card group danger-zone" },
+      h("h2", { text: t("settings.danger") }),
+      h("button", {
+        class: `btn danger${armedWipe ? " armed" : ""}`,
+        id: "wipe",
+        text: armedWipe ? t("settings.wipeConfirm") : t("settings.wipe"),
+        onclick: async () => {
+          if (!armedWipe) return ((state.armed = "wipe"), render());
+          state.armed = null;
+          await wipe();
+          state.config = undefined;
+          state.keys = undefined;
+          state.sid = null;
+          state.screen = "enroll";
+          render();
+        },
+      }),
+    ),
   );
+}
+
+function switchLang(l: Lang): void {
+  setLang(l);
+  document.documentElement.lang = l;
+  render();
 }
 
 async function demoAction(fn: typeof loadDemo, ok: Key): Promise<void> {
@@ -619,6 +701,7 @@ async function demoAction(fn: typeof loadDemo, ok: Key): Promise<void> {
 // ---------- shell ----------
 let renderSeq = 0;
 let lastScreen: Screen | null = null;
+const TAB_ICON: Record<string, IconName> = { sell: "sell", ledger: "sales", wallet: "wallet", settings: "settings" };
 async function render(): Promise<void> {
   const seq = ++renderSeq;
   clearInterval(ticker);
@@ -639,15 +722,28 @@ async function render(): Promise<void> {
               ? await walletScreen()
               : await settingsScreen();
   if (seq !== renderSeq) return; // a newer render started meanwhile
-  const tab = (s: Screen, key: Key) =>
-    h("button", { id: `tab-${s}`, class: state.screen === s || (s === "sell" && state.screen === "confirm") ? "active" : undefined, text: t(key), onclick: () => ((state.screen = s), s === "wallet" && void loadWallet(), render()) });
+  const tab = (s: Screen, key: Key) => {
+    const on = state.screen === s || (s === "sell" && state.screen === "confirm");
+    return h("button", { id: `tab-${s}`, class: on ? "active" : undefined, "aria-current": on ? "page" : undefined, onclick: () => ((state.screen = s), s === "wallet" && void loadWallet(), render()) }, icon(TAB_ICON[s]!), h("span", { text: t(key) }));
+  };
+  const seg = h(
+    "div",
+    { class: "seg", role: "group", "aria-label": t("settings.language") },
+    ...(["fr", "en"] as Lang[]).map((l) => h("button", { lang: l, "aria-pressed": String(getLang() === l), text: l.toUpperCase(), onclick: () => switchLang(l) })),
+  );
+  const online = navigator.onLine;
   const app = document.getElementById("app")!;
   app.replaceChildren(
     ...[
-      state.config?.sandbox ? h("div", { class: "sb", id: "sandbox", role: "note", text: t("sandbox.banner") }) : null,
-      h("header", { class: "top" }, h("span", { class: "wm", text: "jaay" }), h("span", { class: `net ${navigator.onLine ? "on" : "off"}`, id: "net", role: "status", text: t(navigator.onLine ? "net.online" : "net.offline") })),
+      state.config?.sandbox || (!state.config && state.serverSandbox) ? h("div", { class: "sb", id: "sandbox", role: "note" }, icon("flask"), h("span", { text: t("sandbox.banner") })) : null,
+      h(
+        "header",
+        { class: "top" },
+        h("span", { class: "brand" }, mark(), h("span", { class: "wm", text: "jaay" })),
+        h("span", { class: "top-right" }, h("span", { class: `net ${online ? "on" : "off"}`, id: "net", role: "status" }, h("i", { class: "dot", "aria-hidden": "true" }), h("span", { text: t(online ? "net.online" : "net.offline") })), seg),
+      ),
       h("main", { id: "view" }, view),
-      state.config ? h("nav", { class: "tabs" }, tab("sell", "tab.sell"), tab("ledger", "tab.ledger"), tab("wallet", "tab.wallet"), tab("settings", "tab.settings")) : null,
+      state.config ? h("nav", { class: "tabs", "aria-label": "jaay" }, tab("sell", "tab.sell"), tab("ledger", "tab.ledger"), tab("wallet", "tab.wallet"), tab("settings", "tab.settings")) : null,
     ].filter((x): x is HTMLElement => x !== null),
   );
 }

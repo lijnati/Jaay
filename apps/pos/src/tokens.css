@@ -1,0 +1,36 @@
+/* jaay design tokens: the single source for the merchant PWA and the customer simulator (both import this file).
+   The receipt page (apps/server/src/receipt.ts) repeats the values it uses in its CSP-hashed inline stylesheet;
+   a server test checks that every colour there exists here. See docs/DESIGN.md for contrast ratios. */
+:root {
+  /* surfaces and text */
+  --sand: #F7F5F0;
+  --sand-2: #EFEDE7;
+  --surface: #FFFFFF;
+  --ink: #14201B;          /* 16.8:1 on white, 15.4:1 on sand */
+  --muted: #5B6760;        /* 5.9:1 on white, 5.4:1 on sand */
+  --line: #E4E1D8;         /* decorative dividers only */
+  --field: #8A877D;        /* input and control borders, 3.6:1 on white */
+  /* brand */
+  --brand: #0B6B4F;        /* white on brand 6.5:1 */
+  --brand-ink: #FFFFFF;
+  --brand-soft: #E3F1EB;   /* brand text on it 5.6:1 */
+  --accent: #F59E0B;       /* decoration only, never text */
+  /* status: strong for icons and borders, deep for text on the soft tint */
+  --ok: #15803D;  --ok-text: #14532D;  --ok-soft: #DCFCE7;
+  --warn: #B45309; --warn-text: #92400E; --warn-soft: #FEF3C7;
+  --err: #B42318; --err-text: #9F1D14; --err-soft: #FEE4E2;
+  /* SANDBOX banner */
+  --sb-bg: #FEF3C7; --sb-text: #78350F; --sb-line: #F5D68A;
+  /* shape */
+  --r-card: 16px; --r-ctl: 12px; --r-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(20, 32, 27, .06);
+  --shadow-2: 0 1px 2px rgba(20, 32, 27, .06), 0 8px 24px rgba(20, 32, 27, .08);
+  /* spacing scale */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  /* type */
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --fs-hero: 48px; --fs-h1: 24px; --fs-h2: 17px; --fs-body: 16px; --fs-small: 14px; --fs-tiny: 12px;
+  /* motion */
+  --t-fast: 150ms; --t-med: 220ms; --ease: cubic-bezier(.2, .7, .2, 1);
+}
