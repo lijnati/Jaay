@@ -6,7 +6,7 @@ Adopted 2026-11-20 on the `redesign` branch. Calm, trustworthy, warm fintech for
 
 - `apps/pos/src/tokens.css` defines every token as a CSS custom property. The PWA (`styles.css`) and the simulator (`sim.css` imports the PWA stylesheet) use it directly.
 - The receipt page has no external stylesheet (one inline `<style>` pinned by hash in its CSP, no JavaScript). It repeats the token values it needs; `apps/server/src/m4.test.ts` fails if the receipt uses a colour that is not in `tokens.css`.
-- System fonts only, no web fonts, no raster images. Icons and illustrations are inline SVG built with DOM calls (no `innerHTML`), each under 1 KB.
+- One self-hosted typeface, Geist Sans (Vercel, SIL OFL 1.1), served from our own origin at `/app/geist.woff2` (69 KB variable font, precached by the service worker, `font-display: swap`). No third-party font requests, no raster images. Icons and illustrations are inline SVG built with DOM calls (no `innerHTML`), each under 1 KB.
 
 ## Tokens
 
@@ -60,7 +60,7 @@ Amounts (hero, 40 to 56 px, weight 700) are ink on white or sand: 15.4 to 16.8:1
 
 ## Type
 
-System stack: `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif`; monospace for codes and payment strings. Tabular numerals on every amount, countdown and code.
+Geist Sans (adopted 2026-11-20 on the owner's instruction), falling back to the system stack `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif`; monospace for codes and payment strings. Tabular numerals on every amount, countdown and code.
 
 | Role | Size and weight |
 |---|---|

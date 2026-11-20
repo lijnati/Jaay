@@ -17,6 +17,7 @@ const TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
   ".json": "application/json",
   ".txt": "text/plain; charset=utf-8",
+  ".woff2": "font/woff2",
 };
 
 /** Serves a static build at `/<prefix>/` (the PWA at /app/, the customer simulator at /sim/). */

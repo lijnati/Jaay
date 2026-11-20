@@ -15,7 +15,7 @@ Non-extractable keys cannot be copied out of the browser, but any script running
 
 - The server sends `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; ...; frame-ancestors 'none'` for every `/app/` response. No inline scripts or styles exist in the build.
 - All dynamic text is written with `textContent`; the code never uses `innerHTML`. The merchant label is validated at enrollment and in Settings.
-- No third-party requests, no CDN, no analytics, no web fonts. The only network calls go to the same origin.
+- No third-party requests, no CDN, no analytics. The one font (Geist Sans) is self-hosted at `/app/geist.woff2`. The only network calls go to the same origin.
 - Enrollment refuses a server whose origin differs from the app's own origin, and shows the destination host prominently with a one-time "this is my server" confirmation (QR-swap mitigation). The sell screen shows the host in bold under every QR.
 
 ## Confirm code (Hard rule 3)

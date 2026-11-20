@@ -1,6 +1,12 @@
 /* jaay design tokens: the single source for the merchant PWA and the customer simulator (both import this file).
    The receipt page (apps/server/src/receipt.ts) repeats the values it uses in its CSP-hashed inline stylesheet;
    a server test checks that every colour there exists here. See docs/DESIGN.md for contrast ratios. */
+/* Geist Sans (Vercel, SIL OFL 1.1, licence in public/geist-LICENSE.txt), self-hosted at a stable path so the
+   PWA, the simulator and the receipt share one file. swap: system font first, never invisible text. */
+@font-face {
+  font-family: "Geist"; src: url("/app/geist.woff2") format("woff2");
+  font-weight: 100 900; font-style: normal; font-display: swap;
+}
 :root {
   /* surfaces and text */
   --sand: #F7F5F0;
@@ -28,7 +34,7 @@
   /* spacing scale */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
   /* type */
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
   --fs-hero: 48px; --fs-h1: 24px; --fs-h2: 17px; --fs-body: 16px; --fs-small: 14px; --fs-tiny: 12px;
   /* motion */

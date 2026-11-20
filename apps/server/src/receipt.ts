@@ -5,7 +5,8 @@ import type { ReceiptView } from "./sales";
 
 // Same tokens as apps/pos/src/tokens.css (m4.test.ts checks every colour used here exists there).
 const CSS =
-  'body{margin:0;font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:#F7F5F0;color:#14201B}' +
+  '@font-face{font-family:Geist;src:url(/app/geist.woff2) format("woff2");font-weight:100 900;font-display:swap}' +
+  'body{margin:0;font:16px/1.5 Geist,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:#F7F5F0;color:#14201B}' +
   ".sb{background:#FEF3C7;color:#78350F;border-bottom:1px solid #F5D68A;font-size:13px;font-weight:650;padding:6px 12px;text-align:center}" +
   "main{max-width:420px;margin:24px auto;padding:0 16px;text-align:center;overflow-wrap:anywhere}" +
   ".card{background:#FFFFFF;border-radius:16px;box-shadow:0 1px 2px rgba(20,32,27,.06),0 8px 24px rgba(20,32,27,.08);padding:24px 20px}" +
@@ -27,7 +28,7 @@ const MARK =
 const ICON = (d: string, cls = "") =>
   `<svg viewBox="0 0 24 24" aria-hidden="true"><path${cls ? ` class="${cls}"` : ""} d="${d}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const CHECK = ICON("M5 12.5l4.5 4.5L19 7.5", "draw"), CLOCK = ICON("M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z");
-export const RECEIPT_CSP = `default-src 'none'; style-src 'sha256-${createHash("sha256").update(CSS).digest("base64")}'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+export const RECEIPT_CSP = `default-src 'none'; style-src 'sha256-${createHash("sha256").update(CSS).digest("base64")}'; img-src 'none'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 
 type Lang = "fr" | "en";
 export function pickLang(acceptLanguage: string | undefined): Lang {

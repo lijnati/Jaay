@@ -47,7 +47,7 @@ eslint, typescript-eslint, prettier, typescript, tsx, vitest (root); esbuild, fa
 
 - `pnpm install --frozen-lockfile` everywhere (CI and the Dockerfile). pnpm 11 checks the lockfile against its supply-chain policy on install ("Lockfile passes supply-chain policies" in the install log).
 - Build scripts are allowed only for esbuild (`allowBuilds` in pnpm-workspace.yaml).
-- No CDN, no web fonts, no analytics, no third-party request from any page; the CSP enforces `'self'`.
+- No CDN, no analytics, no third-party request from any page; the CSP enforces `'self'`. The one font, Geist Sans (SIL OFL 1.1), is a vendored file served from our own origin, not a package dependency.
 - Exact versions for every production dependency (no caret ranges in `dependencies`).
 
 ## Secret scan
