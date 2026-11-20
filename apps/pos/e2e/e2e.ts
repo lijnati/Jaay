@@ -20,7 +20,9 @@ const DIST = join(POS, "dist");
 // E2E_WIDTH=320|360|412 runs the whole suite at that width (default 360; screenshots only at 360). E2E_ONLY=layout runs just the layout step.
 const WIDTH = Number(process.env.E2E_WIDTH ?? 360);
 const ONLY = process.env.E2E_ONLY;
-const LAYOUT_WIDTHS = [...new Set([320, 360, WIDTH])];
+// E2E_SHOTS=<dir> also saves a screenshot of every layout check (all widths and both languages, plus 1280 px desktop).
+const SHOTS_DIR = process.env.E2E_SHOTS;
+const LAYOUT_WIDTHS = [...new Set([320, 360, WIDTH, ...(SHOTS_DIR ? [412, 1280] : [])])];
 const PORT = 8797;
 const B = `http://localhost:${PORT}`;
 const HOST = `localhost:${PORT}`;
@@ -135,14 +137,15 @@ await step("layout", `no horizontal scroll at ${LAYOUT_WIDTHS.join(", ")} px (EN
   for (const w of LAYOUT_WIDTHS) {
     for (const lang of ["en", "fr"] as const) {
       const ldir = mkdtempSync(join(tmpdir(), "jaay-layout-"));
-      const lctx = await chromium.launchPersistentContext(ldir, { viewport: { width: w, height: 640 }, locale: lang === "fr" ? "fr-FR" : "en-US" });
+      const lctx = await chromium.launchPersistentContext(ldir, { viewport: { width: w, height: 640 }, locale: lang === "fr" ? "fr-FR" : "en-US", reducedMotion: SHOTS_DIR ? "reduce" : "no-preference" });
       const shots = w === 360 && lang === "fr" && WIDTH === 360;
       if (process.env.E2E_DEBUG) console.log(`  layout run ${w} ${lang}`);
       const check = async (pg: Page, name: string) => {
         const [sw, cw] = await pg.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
         seen.push(name);
         if (sw !== cw) bad.push(`${w} ${lang} ${name}: ${sw} > ${cw}`);
-        if (shots) await pg.evaluate(() => scrollTo(0, 0));
+        if (shots || SHOTS_DIR) await pg.evaluate(() => scrollTo(0, 0));
+        if (SHOTS_DIR) { mkdirSync(SHOTS_DIR, { recursive: true }); await pg.screenshot({ path: join(SHOTS_DIR, `${w}-${lang}-${name}.png`) }); }
         if (shots && ["sell", "confirm", "wallet", "receipt-before", "receipt-after", "sim-request", "ledger"].includes(name)) await pg.screenshot({ path: join(SCREENS, "fr", `${name}.png`), fullPage: !["sell", "wallet"].includes(name) });
       };
       try {
@@ -163,7 +166,7 @@ await step("layout", `no horizontal scroll at ${LAYOUT_WIDTHS.join(", ")} px (EN
           const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
           return { bottom: Math.round(b.bottom), limit: Math.round(nav.top), hit: hit?.id ?? hit?.tagName };
         });
-        if (fold.bottom > fold.limit || fold.hit !== "to-confirm") bad.push(`${w} ${lang} primary button below the fold: bottom ${fold.bottom}, nav at ${fold.limit}, hit ${fold.hit}`);
+        if (w <= 412 && (fold.bottom > fold.limit || fold.hit !== "to-confirm")) bad.push(`${w} ${lang} primary button below the fold: bottom ${fold.bottom}, nav at ${fold.limit}, hit ${fold.hit}`);
         if (await app.$("#demo-tools summary")) await app.click("#demo-tools summary");
         await check(app, "sell-demo-tools");
 
