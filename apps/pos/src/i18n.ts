@@ -50,6 +50,7 @@ const en = {
   "confirm.title": "Check the code",
   "confirm.ask": "Ask the customer for the 6-digit code shown on their receipt after paying.",
   "confirm.input": "6-digit code",
+  "confirm.attemptsLabel": "Attempts",
   "confirm.check": "Check code",
   "confirm.left": "{n} attempts left.",
   "confirm.left1": "1 attempt left.",
@@ -194,6 +195,7 @@ const fr: Record<Key, string> = {
   "confirm.title": "Vérifier le code",
   "confirm.ask": "Demandez au client le code à 6 chiffres affiché sur son reçu après paiement.",
   "confirm.input": "Code à 6 chiffres",
+  "confirm.attemptsLabel": "Essais",
   "confirm.check": "Vérifier le code",
   "confirm.left": "Encore {n} essais.",
   "confirm.left1": "Encore 1 essai.",
@@ -316,6 +318,12 @@ export function setLang(l: Lang): void {
 }
 
 export const getLang = () => lang;
+/** Day-first locales for both languages (20/11/2026), so dates never read month-first. */
+export const locale = (l: Lang = lang) => (l === "fr" ? "fr-FR" : "en-GB");
+/** Date and time without seconds, e.g. 20/11/2026 14:05. */
+export const fmtDateTime = (ms: number | string, l: Lang = lang) => new Intl.DateTimeFormat(locale(l), { dateStyle: "short", timeStyle: "short" }).format(new Date(ms));
+/** Time without seconds, e.g. 14:05. */
+export const fmtTime = (ms: number | string, l: Lang = lang) => new Intl.DateTimeFormat(locale(l), { timeStyle: "short" }).format(new Date(ms));
 
 export function t(key: Key, vars: Record<string, string | number> = {}): string {
   return CATALOG[lang][key].replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? `{${k}}`));

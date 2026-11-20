@@ -6,7 +6,7 @@ import { devicePost } from "./auth";
 import { attemptsLeftText, confirmText, tryConfirm, MAX_ATTEMPTS, type ConfirmResult } from "./confirm";
 import { allSales, getConfig, getKeys, getKv, getSale, putConfig, putKv, putSale, wipe, type DeviceConfig, type SaleRec } from "./db";
 import { enrollDevice, parseEnrollPayload, readEnrollFragment, type EnrollPayload } from "./enroll";
-import { getLang, initLang, setLang, t, type Key, type Lang } from "./i18n";
+import { fmtDateTime, fmtTime, getLang, initLang, locale, setLang, t, type Key, type Lang } from "./i18n";
 import { loadDemo, removeDemo, sandboxHelpers } from "./demo";
 import { transition, type LedgerStatus } from "./ledger";
 import { formatXof, groupDigits } from "./money";
@@ -84,8 +84,6 @@ function fold(id: string, which: keyof typeof state.open, title: string, ...kids
 }
 /** The server sends the backend as a code; unknown codes are shown as they are. */
 const backendName = (kind: string) => (["sandbox", "nwc", "lnbits"].includes(kind) ? t(`backend.${kind}` as Key) : kind);
-/** Date and time without seconds, in the app language. */
-const when = (ms: number | string) => new Intl.DateTimeFormat(getLang(), { dateStyle: "short", timeStyle: "short" }).format(new Date(ms));
 const host = () => (state.config ? new URL(state.config.baseUrl).host : "");
 const now = () => Date.now();
 let ticker: ReturnType<typeof setInterval> | undefined;
@@ -413,6 +411,7 @@ async function confirmScreen(): Promise<HTMLElement> {
     pattern: "[0-9]{6}",
     required: true,
     "aria-label": t("confirm.input"),
+    placeholder: "000 000",
     "aria-describedby": state.confirmMsg === null ? "attempts" : "result",
   }) as HTMLInputElement;
   const r = state.confirmMsg;
@@ -431,13 +430,16 @@ async function confirmScreen(): Promise<HTMLElement> {
   // Sale identity: its number among that day's sales and its time, so the merchant checks the right one.
   const startOfDay = new Date(rec.createdAt).setHours(0, 0, 0, 0);
   const nth = (await allSales()).filter((s) => s.createdAt >= startOfDay && s.createdAt <= rec.createdAt).length;
-  const time = new Intl.DateTimeFormat(getLang(), { timeStyle: "short" }).format(new Date(rec.createdAt));
+  const time = fmtTime(rec.createdAt);
   // The counter text comes from the persisted record (never from memory), so it matches after a reload.
   const status = r === null ? (rec.attempts < MAX_ATTEMPTS ? attemptsLeftText(rec.attempts, t) : null) : confirmText(r, rec.attempts, t);
+  // Filled dots are used attempts, read from the persisted record like the text. Hidden from screen readers:
+  // the status text next to the field says the same thing in words.
   const dots = h(
-    "span",
-    { class: "dots", "aria-hidden": "true" },
-    ...Array.from({ length: MAX_ATTEMPTS }, (_, i) => h("i", { class: i < rec.attempts ? "used" : undefined })),
+    "div",
+    { class: "dotsrow", id: "attempt-dots", "data-used": String(rec.attempts), "aria-hidden": "true" },
+    h("span", { text: t("confirm.attemptsLabel") }),
+    h("span", { class: "dots" }, ...Array.from({ length: MAX_ATTEMPTS }, (_, i) => h("i", { class: i < rec.attempts ? "used" : undefined }))),
   );
   const statusEl =
     status &&
@@ -450,9 +452,10 @@ async function confirmScreen(): Promise<HTMLElement> {
     h("h1", { text: t("confirm.title") }),
     h("p", { class: "pill sale-id", id: "sale-id", text: t("confirm.sale", { n: nth, time }) }),
     h("p", { class: "amount", text: formatXof(rec.amountXof) }),
+    done && h("div", { class: "bigcheck", "aria-hidden": "true" }, icon("check", "ic draw")),
     done
       ? statusEl
-      : h("div", { class: "card codecard" }, h("p", { class: "hint", text: t("confirm.ask") }), input, h("div", { class: "attempts" }, dots, statusEl), checkBtn),
+      : h("div", { class: "card codecard" }, h("p", { class: "hint", text: t("confirm.ask") }), input, statusEl && h("div", { class: "attempts" }, statusEl), dots, checkBtn),
     h("button", {
       class: done ? "btn" : "btn secondary",
       id: "next",
@@ -483,15 +486,14 @@ async function ledgerScreen(): Promise<HTMLElement> {
   const chip = (f: typeof state.filter, key: Key) =>
     h("button", { class: `chip${state.filter === f ? " active" : ""}`, id: `filter-${f}`, "aria-pressed": String(state.filter === f), text: t(key), onclick: () => ((state.filter = f), render()) });
   const r = state.recon;
-  const reconText = r.kind === "running" ? t("ledger.reconciling") : r.kind === "ok" ? t("ledger.reconciled", { n: r.n ?? 0, time: new Date(r.at!).toLocaleTimeString() }) : r.kind === "fail" ? t("ledger.reconcileFailed") : r.kind === "offline" ? t("ledger.offline") : "";
+  const reconText = r.kind === "running" ? t("ledger.reconciling") : r.kind === "ok" ? t("ledger.reconciled", { n: r.n ?? 0, time: fmtTime(r.at!) }) : r.kind === "fail" ? t("ledger.reconcileFailed") : r.kind === "offline" ? t("ledger.offline") : "";
   // Group by local day, newest first; each day shows the total of what counts as sold.
   const days = new Map<number, SaleRec[]>();
   for (const s of [...shown].sort((a, b) => b.createdAt - a.createdAt)) {
     const d = new Date(s.createdAt).setHours(0, 0, 0, 0);
     days.set(d, [...(days.get(d) ?? []), s]);
   }
-  const dayName = (d: number) => (d === startOfDay ? t("ledger.dayToday") : new Intl.DateTimeFormat(getLang(), { weekday: "short", day: "numeric", month: "short" }).format(new Date(d)));
-  const timeOf = (ms: number) => new Intl.DateTimeFormat(getLang(), { timeStyle: "short" }).format(new Date(ms));
+  const dayName = (d: number) => (d === startOfDay ? t("ledger.dayToday") : new Intl.DateTimeFormat(locale(), { weekday: "short", day: "numeric", month: "short" }).format(new Date(d)));
   return h(
     "section",
     { class: "stack ledger" },
@@ -520,16 +522,17 @@ async function ledgerScreen(): Promise<HTMLElement> {
                   const openable = s.status === "open" || s.status === "expired";
                   return h(
                     "li",
-                    { "data-sid": s.sid, "data-status": s.status },
+                    { "data-sid": s.sid, "data-status": s.status, class: note ? "has-note" : undefined },
                     h(
                       "div",
                       { class: "rowmain" },
                       h("div", { class: "amt", text: formatXof(s.amountXof) }),
-                      h("div", { class: "when", text: timeOf(s.createdAt) }),
-                      note && h("div", { class: "hint callout err", text: note }),
+                      h("div", { class: "when", text: fmtTime(s.createdAt) }),
                       s.demo && h("div", { class: "hint", text: `${t("demo.badge")}: ${s.demoLabel ?? ""}` }),
                     ),
                     chipEl(s.status, t(`status.${s.status}` as Key), openable ? async () => ((state.screen = "confirm"), await setActive(s.sid), render()) : undefined),
+                    // Last child, full row width (flex-wrap), so the chip stays on the amount line.
+                    note && h("div", { class: "hint callout err", text: note }),
                   );
                 }),
               ),
@@ -582,13 +585,13 @@ async function walletScreen(): Promise<HTMLElement> {
             h(
               "li",
               { "data-demo": r.demo ? "1" : undefined },
-              h("div", { class: "rowmain" }, h("div", { class: "amt", text: formatXof(r.amountXof) }), h("div", { class: "when", text: when(r.paidAt) })),
               h(
                 "div",
-                { class: "tags" },
-                r.demo && chipEl("demo", t("demo.badge")),
-                chipEl(r.status === "paid_late" ? "paid_late" : "paid", t(r.status === "paid_late" ? "status.paid_late" : "status.paid")),
+                { class: "rowmain" },
+                h("div", { class: "amt", text: formatXof(r.amountXof) }),
+                h("div", { class: "when" }, h("span", { text: fmtDateTime(r.paidAt) }), r.demo && chipEl("demo", t("demo.badge"))),
               ),
+              h("div", { class: "tags" }, chipEl(r.status === "paid_late" ? "paid_late" : "paid", t(r.status === "paid_late" ? "status.paid_late" : "status.paid"))),
             ),
           ),
         ),

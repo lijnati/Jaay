@@ -3,7 +3,7 @@ import { deriveKeys, generateDeviceSecret } from "@jaay/protocol";
 import { expect, test } from "vitest";
 import { canonicalRequest } from "../../server/src/deviceauth";
 import { signedHeaders } from "./auth";
-import { CATALOG } from "./i18n";
+import { CATALOG, fmtDateTime, fmtTime } from "./i18n";
 import { formatXof } from "./money";
 
 test("money: XOF with thin grouping and F, tabular-friendly, integers only", () => {
@@ -49,5 +49,13 @@ test("i18n: no hard-coded user-visible text in the PWA or the simulator; only th
     const src = readFileSync(new URL(f, import.meta.url), "utf8");
     const literals = [...src.matchAll(/\btext: (["'`])((?:(?!\1).)*)\1/g)].map((m) => m[2]!).filter((s) => !s.includes("${"));
     expect(literals.filter((s) => s !== "jaay" && s !== "jaay sim"), f).toEqual([]);
+  }
+});
+
+test("dates: day first in both languages (en-GB, fr-FR), no seconds", () => {
+  const ms = new Date(2026, 10, 20, 14, 5, 9).getTime(); // 20 Nov 2026 14:05:09 local
+  for (const l of ["en", "fr"] as const) {
+    expect(fmtDateTime(ms, l)).toMatch(/^20\/11\/2026\D+14:05$/);
+    expect(fmtTime(ms, l)).toBe("14:05");
   }
 });
