@@ -28,3 +28,7 @@ Target 2:50, hard limit 3:00. English captions. Everything is SANDBOX (simulated
 - [ ] No secrets on screen: no enrollment code, NWC string, master key or .env.
 - [ ] Video under 3:00.
 - [ ] English captions added.
+
+## Visual changes after the 2026-11-20 redesign (no behaviour changed)
+
+The screens look different from the 2026-11-17 recording plan: sand background with white cards and a green primary button; the SANDBOX banner is a slim amber strip with a flask icon (still on every screen in sandbox mode, now also on the setup screen); the first screen is a welcome with "Sell without signal." and three steps; the sell screen shows the QR in a white card with the host in a link chip and a thin countdown bar; the check-code screen shows three attempt dots; Sales is grouped by day with day totals; the receipt is a white card with a "Paid" pill and the code in a soft box. Every button, label and flow in the script still exists under the same name.

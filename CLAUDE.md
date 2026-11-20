@@ -44,7 +44,7 @@ The main session runs on Opus 5.5. Use cheaper models for easy work through suba
 
 ## Product and UI
 - French first, English toggle. Prices in XOF. Large touch targets, high contrast, works on mid-range Android over slow networks.
-- Visual style: minimal, black and white, flat, clean typography, premium feel. Lowercase `jaay` wordmark. No color accents except status (paid, unpaid, error).
+- Visual style (changed 2026-11-20 on the owner's instruction, for the hosted demo's first impression; replaces the earlier black and white, square-cornered style): calm, warm fintech per `docs/DESIGN.md`. Sand background, white cards, deep green primary actions, amber only as a small decoration (logo dot, active tab), status colours with icon plus word, 16 px card and 12 px control radius, soft shadows, system fonts, inline SVG icons. Every token lives in `apps/pos/src/tokens.css`; the receipt repeats them and a test keeps them in sync. Lowercase `jaay` wordmark. Contrast is WCAG AA for every text and control pair (table in DESIGN.md).
 - Budgets: receipt page under 20 KB, POS shell fully usable offline after first load.
 
 ## Writing
