@@ -81,13 +81,15 @@ Room for French: buttons and chips wrap instead of truncating; no fixed widths o
 - **Pills and chips:** 999 px radius; filter pills are toggle buttons (`aria-pressed`); status chips are icon plus word on a soft tint.
 - **Keypad:** 3 by 4 grid, 64 px keys, white with a hairline, pressed fill sand-2, backspace as an icon with an accessible name.
 - **QR card:** the QR stays black on white with a 16 px quiet zone inside a white card; the host sits under it in a bold chip with a link icon; countdown text plus a thin progress bar.
-- **Code input:** one input element, monospace 36 px with wide letter spacing, inside a soft card; three attempt dots (filled = used) beside the existing attempt text.
+- **Code input:** one input element, monospace with wide letter spacing and a faint `000 000` placeholder (the aria-label stays the label), inside a soft card; the attempt text sits right under the field, then a labelled row of three dots (filled = used, read from the stored counter).
+- **Dates:** day first in both languages (`en-GB`, `fr-FR`, for example 20/11/2026 14:05), never seconds. The server receipt keeps its explicit UTC label.
+- **Ledger rows:** amount and status chip on the first line; a mismatch explanation runs full width below the row.
 - **Callouts:** soft tinted box with a 4 px left border in the status colour, used for mismatch notes and messages.
 
 ## States and motion
 
 - Pressed 150 ms, focus ring 3 px brand outline with 2 px offset, cards appear with a 220 ms fade and 4 px rise.
-- Success (payment confirmed in the PWA, paid receipt): a CSS-only check mark draw (stroke-dashoffset, 450 ms).
+- Success (payment confirmed in the PWA, paid receipt): a CSS-only check mark draw (stroke-dashoffset, 450 ms); in the PWA a large check in a soft green circle pops in above "Payment confirmed." (320 ms).
 - `prefers-reduced-motion: reduce` turns every animation and transition off.
 - `forced-colors: active`: controls keep a visible border (`ButtonText`), chips and the banner get borders, focus uses `Highlight`; meaning never depends on colour alone.
 - QR codes are always black on white with a quiet zone, in every mode.

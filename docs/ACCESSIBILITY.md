@@ -21,4 +21,4 @@ Measured 2026-11-20 on the `redesign` branch. Real screen readers, real phones, 
 
 ## Not run
 
-- axe-core: NOT RUN. It is not a dependency of this project and the redesign brief forbids new dependencies; the computed contrast table and the DOM checks above stand in for it.
+- axe-core 4.14.0 (WCAG 2.1 A and AA), run on every layout screen at 320 and 360 px in EN and FR with `E2E_ONLY=layout E2E_AXE=<path to axe.min.js> pnpm --filter @jaay/pos test:e2e` (axe is a local copy, not a dependency). Result: 0 serious or critical issues on the PWA and the simulator. One open critical on the server receipt before payment: `meta-refresh`, because the page reloads every 5 seconds while it waits (it has no JavaScript by design). Removing it changes server behaviour, so it is left for an owner decision. The simulator's raw-response blocks are now keyboard focusable (axe `scrollable-region-focusable`).
