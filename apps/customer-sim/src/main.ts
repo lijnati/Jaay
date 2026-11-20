@@ -158,7 +158,7 @@ function render(): void {
       state.pay && h("button", { class: "btn", id: "pay", text: t("pay"), onclick: () => void pay() }),
       state.error && h("p", { class: "msg err", id: "error", role: "alert", text: t("error", { reason: state.error }) }),
       state.raw.length > 0 &&
-        h("details", { id: "raw" }, h("summary", { text: t("raw") }), ...state.raw.map((r) => h("div", {}, h("p", { class: "hint", text: r.label }), h("pre", { text: JSON.stringify(r.body, null, 2) })))),
+        h("details", { id: "raw" }, h("summary", { text: t("raw") }), ...state.raw.map((r) => h("div", {}, h("p", { class: "hint", text: r.label }), h("pre", { tabindex: "0", role: "region", "aria-label": r.label, text: JSON.stringify(r.body, null, 2) })))),
     ),
   );
 }
