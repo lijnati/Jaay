@@ -160,12 +160,16 @@ describe("receipt polish", () => {
     const fr = await (await srv.req(`/r/${s.rt}`)).text();
     const en = await (await srv.req(`/r/${s.rt}`, { headers: { "accept-language": "en" } })).text();
     expect(fr).toContain("2 500 XOF");
-    expect(fr).toContain("En attente de votre paiement. Si vous avez déjà payé, cette page se met à jour dans quelques secondes.");
+    expect(fr).toContain("En attente de votre paiement. Si vous avez déjà payé, touchez Vérifier à nouveau.");
     expect(fr).toContain(`Dernière vérification : ${clock} UTC`);
-    expect(en).toContain("Waiting for your payment. If you already paid, this updates in a few seconds.");
+    expect(en).toContain("Waiting for your payment. If you already paid, tap Check again.");
     expect(en).toContain(`Last checked: ${clock} UTC`);
+    // An empty href reloads this same receipt URL.
+    expect(fr).toContain('<a class="again" href="">Vérifier à nouveau</a>');
+    expect(en).toContain('<a class="again" href="">Check again</a>');
     for (const html of [fr, en]) {
-      expect(html).toContain('<meta http-equiv="refresh" content="5">');
+      // No timed reload (WCAG 2.2.1, axe meta-refresh): the customer decides when to check again.
+      expect(html).not.toMatch(/http-equiv="refresh"/i);
       expect(html).not.toMatch(/class="(code|vh)"/);
     }
   });

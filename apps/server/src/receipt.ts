@@ -19,9 +19,11 @@ const CSS =
   '.code{font:700 56px/1.1 ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.04em;margin:4px 0;white-space:nowrap;font-variant-numeric:tabular-nums}' +
   ".vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}" +
   ".keep{font-weight:700;margin-top:16px}" +
+  ".again{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;margin-top:8px;border-radius:12px;background:#0B6B4F;color:#FFFFFF;font-weight:650;text-decoration:none}" +
+  ".again:focus-visible{outline:3px solid #0B6B4F;outline-offset:2px}" +
   "@media (max-width:400px){.code{font-size:42px}.amt{font-size:34px}}" +
   "@media (prefers-reduced-motion:reduce){.draw{animation:none;stroke-dashoffset:0}}" +
-  "@media (forced-colors:active){.card,.st,.codebox{border:1px solid CanvasText}}";
+  "@media (forced-colors:active){.card,.st,.codebox,.again{border:1px solid CanvasText}}";
 const MARK =
   '<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="120" fill="#0B6B4F"/><circle cx="316" cy="140" r="44" fill="#F59E0B"/>' +
   '<path d="M316 250V350A50 50 0 0 1 266 400H196" fill="none" stroke="#FFFFFF" stroke-width="64" stroke-linecap="round"/></svg>';
@@ -43,7 +45,8 @@ export const RECEIPT_TEXT = {
     pending: "Pas encore payé",
     fixed: "taux de démo fixe, pas un taux de marché",
     merchant: "Marchand :",
-    pendingHint: "En attente de votre paiement. Si vous avez déjà payé, cette page se met à jour dans quelques secondes.",
+    pendingHint: "En attente de votre paiement. Si vous avez déjà payé, touchez Vérifier à nouveau.",
+    again: "Vérifier à nouveau",
     checked: "Dernière vérification :",
     generic: "Reçu introuvable ou expiré",
     paid: "Payé",
@@ -57,7 +60,8 @@ export const RECEIPT_TEXT = {
     pending: "Not paid yet",
     fixed: "fixed demo rate, not a market rate",
     merchant: "Merchant:",
-    pendingHint: "Waiting for your payment. If you already paid, this updates in a few seconds.",
+    pendingHint: "Waiting for your payment. If you already paid, tap Check again.",
+    again: "Check again",
     checked: "Last checked:",
     generic: "Receipt not found or expired",
     paid: "Paid",
@@ -80,7 +84,6 @@ const fmtCode = (code: string) => `<span aria-hidden="true">${esc(code.replace(/
 export function renderReceipt(view: ReceiptView, lang: Lang, sandbox: boolean): string {
   const t = RECEIPT_TEXT[lang];
   let body: string;
-  let refresh = "";
   if (view.kind === "paid") {
     body =
       `<p class="muted">${t.merchant} ${esc(view.label)}</p>` +
@@ -89,16 +92,17 @@ export function renderReceipt(view: ReceiptView, lang: Lang, sandbox: boolean): 
       `<p class="muted">${fmtTime(view.paidAt)}</p>` +
       `<div class="codebox"><p class="muted">${t.code}</p><p class="code">${fmtCode(view.code)}</p></div><p class="keep">${t.keep}</p>`;
   } else if (view.kind === "pending") {
-    refresh = '<meta http-equiv="refresh" content="5">';
+    // No timed reload (WCAG 2.2.1): the customer reloads when ready. href="" is this same receipt URL; no JavaScript needed.
     body =
       `<p class="muted">${t.merchant} ${esc(view.label)}</p><p class="amt">${fmtXof(view.amountXof)}</p>` +
-      `<p class="st late">${CLOCK}${t.pending}</p><p>${t.pendingHint}</p><p class="muted">${t.checked} ${fmtClock(view.checkedAt)}</p>`;
+      `<p class="st late">${CLOCK}${t.pending}</p><p>${t.pendingHint}</p>` +
+      `<p><a class="again" href="">${t.again}</a></p><p class="muted">${t.checked} ${fmtClock(view.checkedAt)}</p>`;
   } else {
     body = `<p>${t.generic}</p>`;
   }
   return (
     `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width,initial-scale=1">${refresh}` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<title>jaay ${t.title}</title><style>${CSS}</style></head><body>` +
     (sandbox ? `<div class="sb">${t.sandbox}</div>` : "") +
     `<main><div class="card"><p class="w">${MARK}jaay</p>${body}</div></main></body></html>`
