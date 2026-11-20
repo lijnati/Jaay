@@ -220,3 +220,12 @@ test("receipt strings: every key in FR and EN, non-empty; the page has no other 
     expect(ok, line).toBe(true);
   }
 });
+
+test("receipt design: every colour it uses comes from the shared tokens (apps/pos/src/tokens.css)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const tokens = readFileSync(new URL("../../pos/src/tokens.css", import.meta.url), "utf8").toUpperCase();
+  const html = renderReceipt({ kind: "paid", amountXof: 1000, paidAt: 0, code: "123456", late: false, label: "L", msat: "1000", fixedRate: false }, "en", true);
+  const used = [...new Set(html.match(/#[0-9A-Fa-f]{6}/g) ?? [])];
+  expect(used.length).toBeGreaterThan(5);
+  for (const c of used) expect(tokens, c).toContain(c.toUpperCase());
+});

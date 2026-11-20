@@ -3,14 +3,30 @@
 import { createHash } from "node:crypto";
 import type { ReceiptView } from "./sales";
 
+// Same tokens as apps/pos/src/tokens.css (m4.test.ts checks every colour used here exists there).
 const CSS =
-  "body{margin:0;font:18px/1.4 system-ui,sans-serif;background:#fff;color:#000}" +
-  "main{max-width:420px;margin:0 auto;padding:24px 16px;text-align:center}" +
-  ".w{font-weight:700;letter-spacing:.02em}.code{font:700 56px/1.1 ui-monospace,monospace;letter-spacing:.12em;margin:16px 0}" +
-  ".amt{font-size:28px;font-weight:700}.muted{color:#444;font-size:15px}.ok{color:#0a7d32}.late{color:#8a5a00}" +
-  ".sb{background:#000;color:#fff;font-size:13px;padding:6px;text-align:center}" +
+  'body{margin:0;font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:#F7F5F0;color:#14201B}' +
+  ".sb{background:#FEF3C7;color:#78350F;border-bottom:1px solid #F5D68A;font-size:13px;font-weight:650;padding:6px 12px;text-align:center}" +
+  "main{max-width:420px;margin:24px auto;padding:0 16px;text-align:center;overflow-wrap:anywhere}" +
+  ".card{background:#FFFFFF;border-radius:16px;box-shadow:0 1px 2px rgba(20,32,27,.06),0 8px 24px rgba(20,32,27,.08);padding:24px 20px}" +
+  "p{margin:8px 0}.w{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px;font-weight:800;letter-spacing:-.03em;margin:0 0 16px}.w svg{width:28px;height:28px}" +
+  ".muted{color:#5B6760;font-size:14px}.amt{font-size:40px;font-weight:700;letter-spacing:-.03em;margin:4px 0;font-variant-numeric:tabular-nums}" +
+  ".st{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:15px;font-weight:700}.st svg{width:18px;height:18px}" +
+  ".ok{background:#DCFCE7;color:#14532D}.late{background:#FEF3C7;color:#92400E}" +
+  ".draw{stroke-dasharray:24;stroke-dashoffset:24;animation:d .45s ease .1s forwards}@keyframes d{to{stroke-dashoffset:0}}" +
+  ".codebox{margin:16px 0 0;padding:12px 8px;border-radius:12px;background:#F7F5F0}" +
+  '.code{font:700 56px/1.1 ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.04em;margin:4px 0;white-space:nowrap;font-variant-numeric:tabular-nums}' +
   ".vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}" +
-  ".keep{font-weight:700;margin-top:24px}main{overflow-wrap:anywhere}";
+  ".keep{font-weight:700;margin-top:16px}" +
+  "@media (max-width:400px){.code{font-size:42px}.amt{font-size:34px}}" +
+  "@media (prefers-reduced-motion:reduce){.draw{animation:none;stroke-dashoffset:0}}" +
+  "@media (forced-colors:active){.card,.st,.codebox{border:1px solid CanvasText}}";
+const MARK =
+  '<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="120" fill="#0B6B4F"/><circle cx="316" cy="140" r="44" fill="#F59E0B"/>' +
+  '<path d="M316 250V350A50 50 0 0 1 266 400H196" fill="none" stroke="#FFFFFF" stroke-width="64" stroke-linecap="round"/></svg>';
+const ICON = (d: string, cls = "") =>
+  `<svg viewBox="0 0 24 24" aria-hidden="true"><path${cls ? ` class="${cls}"` : ""} d="${d}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const CHECK = ICON("M5 12.5l4.5 4.5L19 7.5", "draw"), CLOCK = ICON("M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z");
 export const RECEIPT_CSP = `default-src 'none'; style-src 'sha256-${createHash("sha256").update(CSS).digest("base64")}'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 
 type Lang = "fr" | "en";
@@ -67,15 +83,15 @@ export function renderReceipt(view: ReceiptView, lang: Lang, sandbox: boolean): 
   if (view.kind === "paid") {
     body =
       `<p class="muted">${t.merchant} ${esc(view.label)}</p>` +
-      `<p class="${view.late ? "late" : "ok"}">${view.late ? t.late : t.paid}</p>` +
+      `<p class="st ${view.late ? "late" : "ok"}">${CHECK}${view.late ? t.late : t.paid}</p>` +
       `<p class="amt">${fmtXof(view.amountXof)}</p><p class="muted">${fmtSats(view.msat)}${view.fixedRate ? ` (${t.fixed})` : ""}</p>` +
       `<p class="muted">${fmtTime(view.paidAt)}</p>` +
-      `<p class="muted">${t.code}</p><p class="code">${fmtCode(view.code)}</p><p class="keep">${t.keep}</p>`;
+      `<div class="codebox"><p class="muted">${t.code}</p><p class="code">${fmtCode(view.code)}</p></div><p class="keep">${t.keep}</p>`;
   } else if (view.kind === "pending") {
     refresh = '<meta http-equiv="refresh" content="5">';
     body =
       `<p class="muted">${t.merchant} ${esc(view.label)}</p><p class="amt">${fmtXof(view.amountXof)}</p>` +
-      `<p class="late">${t.pending}</p><p>${t.pendingHint}</p><p class="muted">${t.checked} ${fmtClock(view.checkedAt)}</p>`;
+      `<p class="st late">${CLOCK}${t.pending}</p><p>${t.pendingHint}</p><p class="muted">${t.checked} ${fmtClock(view.checkedAt)}</p>`;
   } else {
     body = `<p>${t.generic}</p>`;
   }
@@ -84,6 +100,6 @@ export function renderReceipt(view: ReceiptView, lang: Lang, sandbox: boolean): 
     `<meta name="viewport" content="width=device-width,initial-scale=1">${refresh}` +
     `<title>jaay ${t.title}</title><style>${CSS}</style></head><body>` +
     (sandbox ? `<div class="sb">${t.sandbox}</div>` : "") +
-    `<main><p class="w">jaay</p>${body}</main></body></html>`
+    `<main><div class="card"><p class="w">${MARK}jaay</p>${body}</div></main></body></html>`
   );
 }
