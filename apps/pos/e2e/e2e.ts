@@ -124,7 +124,12 @@ async function statusOf(page: Page, sid: string): Promise<string | null> {
   return page.getAttribute(`li[data-sid="${sid}"]`, "data-status");
 }
 const launch = (dir: string, offline = false) => chromium.launchPersistentContext(dir, { viewport: { width: WIDTH, height: 780 }, locale: "en-US", offline });
-const shot = (page: Page, name: string, fullPage = false) => (WIDTH === 360 ? page.screenshot({ path: join(SCREENS, `${name}.png`), fullPage }) : Promise.resolve());
+// Screenshots wait out the 220 ms appear animation, so docs images are never caught mid-fade.
+const shot = async (page: Page, name: string, fullPage = false) => {
+  if (WIDTH !== 360) return;
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(SCREENS, `${name}.png`), fullPage });
+};
 mkdirSync(join(SCREENS, "fr"), { recursive: true });
 const sidOf = async (qr: string) => (await decodeSale((await tokenOf(qr)).token, keys, { minAmountXof: 1, maxAmountXof: 0xffffffff })).sid;
 
@@ -144,7 +149,7 @@ await step("layout", `no horizontal scroll at ${LAYOUT_WIDTHS.join(", ")} px (EN
         const [sw, cw] = await pg.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
         seen.push(name);
         if (sw !== cw) bad.push(`${w} ${lang} ${name}: ${sw} > ${cw}`);
-        if (shots || SHOTS_DIR) await pg.evaluate(() => scrollTo(0, 0));
+        if (shots || SHOTS_DIR) { await pg.evaluate(() => scrollTo(0, 0)); await pg.waitForTimeout(400); }
         if (SHOTS_DIR) { mkdirSync(SHOTS_DIR, { recursive: true }); await pg.screenshot({ path: join(SHOTS_DIR, `${w}-${lang}-${name}.png`) }); }
         if (shots && ["sell", "confirm", "wallet", "receipt-before", "receipt-after", "sim-request", "ledger"].includes(name)) await pg.screenshot({ path: join(SCREENS, "fr", `${name}.png`), fullPage: !["sell", "wallet"].includes(name) });
       };
