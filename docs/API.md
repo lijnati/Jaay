@@ -153,7 +153,7 @@ Receipt page for the customer. Returns HTML (not JSON).
 
 - No JavaScript. Strict CSP: `default-src 'none'` with the stylesheet pinned by hash.
 - French by default, English when the first `Accept-Language` entry starts with `en`.
-- Pending: the page says not paid yet and refreshes every 5 s.
+- Pending: the page says not paid yet, with a "Check again" link that reloads it. No timed refresh (WCAG 2.2.1), and still no JavaScript.
 - Paid or paid late: shows amount, UTC time and the confirm code. The code appears only after settlement (`paid` or `paid_late`).
 - SANDBOX servers show a SANDBOX bar at the top.
 
