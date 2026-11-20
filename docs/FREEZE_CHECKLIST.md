@@ -29,7 +29,8 @@ Feature freeze: 2026-11-18 18:00 EAT. After it, bug fixes only. Updated 2026-11-
 - [x] Interview-evidence tags removed (2026-11-19); the docs make no claim about merchants or users.
 - [ ] French texts (README.fr, PITCH elevator pitch, UI strings) reviewed by a French speaker; Wolof name checked by a Wolof speaker.
 - [ ] Discord questions from the roadmap (solo entry, wallet eligibility, payouts, hosted sandbox) still unanswered.
-- [ ] Video: record last (DEMO_SCRIPT.md), under 3:00, with the regtest segment labeled.
+- [x] Video: 30 s launch film (media/film.html, rendered 1080p60), on YouTube and embedded in the Devpost project.
+- [x] Devpost project submitted to Dakar Bitcoin Hack by BTrust (2026-11-20): https://devpost.com/software/jaay-sell-without-signal
 
 ## Go or no-go for the freeze
 
