@@ -22,6 +22,9 @@ const WIDTH = Number(process.env.E2E_WIDTH ?? 360);
 const ONLY = process.env.E2E_ONLY;
 // E2E_SHOTS=<dir> also saves a screenshot of every layout check (all widths and both languages, plus 1280 px desktop).
 const SHOTS_DIR = process.env.E2E_SHOTS;
+// E2E_AXE=<path to axe.min.js> also runs axe-core (WCAG 2.1 A/AA) on every layout screen and fails on serious or critical
+// issues. axe is not a dependency: point this at a local copy. The layout contexts then bypass the CSP so axe can be injected.
+const AXE = process.env.E2E_AXE;
 const LAYOUT_WIDTHS = [...new Set([320, 360, WIDTH, ...(SHOTS_DIR ? [412, 1280] : [])])];
 const PORT = 8797;
 const B = `http://localhost:${PORT}`;
@@ -139,16 +142,26 @@ const codeIn = (html: string) => (/class="vh">(\d{6})</.exec(html) ?? /class="co
 await step("layout", `no horizontal scroll at ${LAYOUT_WIDTHS.join(", ")} px (EN, FR): PWA screens, simulator, receipt; primary button above the fold at 640 px high`, async () => {
   const bad: string[] = [];
   const seen: string[] = [];
+  const axeSeen: string[] = [];
   for (const w of LAYOUT_WIDTHS) {
     for (const lang of ["en", "fr"] as const) {
       const ldir = mkdtempSync(join(tmpdir(), "jaay-layout-"));
-      const lctx = await chromium.launchPersistentContext(ldir, { viewport: { width: w, height: 640 }, locale: lang === "fr" ? "fr-FR" : "en-US", reducedMotion: SHOTS_DIR ? "reduce" : "no-preference" });
+      const lctx = await chromium.launchPersistentContext(ldir, { viewport: { width: w, height: 640 }, locale: lang === "fr" ? "fr-FR" : "en-US", reducedMotion: SHOTS_DIR || AXE ? "reduce" : "no-preference", bypassCSP: !!AXE });
       const shots = w === 360 && lang === "fr" && WIDTH === 360;
       if (process.env.E2E_DEBUG) console.log(`  layout run ${w} ${lang}`);
       const check = async (pg: Page, name: string) => {
         const [sw, cw] = await pg.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
         seen.push(name);
         if (sw !== cw) bad.push(`${w} ${lang} ${name}: ${sw} > ${cw}`);
+        if (AXE) {
+          await pg.addScriptTag({ path: AXE });
+          const v = await pg.evaluate(async () => {
+            const r = await (window as unknown as { axe: { run: (c: Document, o: object) => Promise<{ violations: { id: string; impact: string; nodes: unknown[] }[] }> } }).axe.run(document, { runOnly: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] });
+            return r.violations.map((x) => `${x.impact} ${x.id} (${x.nodes.length})`);
+          });
+          axeSeen.push(...v.map((x) => `${w} ${lang} ${name}: ${x}`));
+          for (const x of v) if (/^(serious|critical) /.test(x)) bad.push(`${w} ${lang} ${name}: axe ${x}`);
+        }
         if (shots || SHOTS_DIR) { await pg.evaluate(() => scrollTo(0, 0)); await pg.waitForTimeout(400); }
         if (SHOTS_DIR) { mkdirSync(SHOTS_DIR, { recursive: true }); await pg.screenshot({ path: join(SHOTS_DIR, `${w}-${lang}-${name}.png`) }); }
         if (shots && ["sell", "confirm", "wallet", "receipt-before", "receipt-after", "sim-request", "ledger"].includes(name)) await pg.screenshot({ path: join(SCREENS, "fr", `${name}.png`), fullPage: !["sell", "wallet"].includes(name) });
@@ -219,7 +232,7 @@ await step("layout", `no horizontal scroll at ${LAYOUT_WIDTHS.join(", ")} px (EN
   }
   for (const b of bad) console.log(`  layout: ${b}`);
   assert(bad.length === 0, `${bad.length} problems (listed above)`);
-  return `${seen.length} screen checks, none wider than the viewport`;
+  return `${seen.length} screen checks, none wider than the viewport${AXE ? `; axe: ${axeSeen.length} minor/moderate findings, 0 serious or critical${axeSeen.length ? ` (${[...new Set(axeSeen.map((x) => x.split(": ")[1]))].join(", ")})` : ""}` : ""}`;
 });
 
 if (!ONLY) {
@@ -433,6 +446,9 @@ try {
       });
     }, sid);
     assert(stored === 2 && shown === "1 attempt left.", `after reload: stored ${stored}, shown "${shown}"`);
+    // The dots read the same persisted counter: as many filled dots as used attempts.
+    const dots = await page.$eval("#attempt-dots", (e) => ({ used: e.getAttribute("data-used"), filled: e.querySelectorAll("i.used").length, label: e.textContent }));
+    assert(dots.used === String(stored) && dots.filled === stored && dots.label === "Attempts", `after reload: dots ${JSON.stringify(dots)}, stored ${stored}`);
     assert((await page.textContent("#sale-id"))?.startsWith("Sale "), "sale identity missing");
     const r3 = await typeCode(page, wrong);
     assert(r3.startsWith("Too many wrong codes"), `third: ${r3}`);
