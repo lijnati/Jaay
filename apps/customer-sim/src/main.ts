@@ -2,6 +2,7 @@
 import "../../pos/src/styles.css";
 import "./sim.css";
 import { groupDigits } from "../../pos/src/money";
+import { icon, mark } from "../../pos/src/icons";
 import { initLang, t, toggleLang } from "./i18n";
 import { GENERIC, fetchPayRequest, invoiceSummary, parseInput, requestInvoice, sandboxPay, successLink, WalletError, type PayRequest } from "./wallet";
 
@@ -45,7 +46,7 @@ async function read(): Promise<void> {
     state.steps.push(
       h(
         "div",
-        { class: "card", id: "step1" },
+        { class: "card stepcard", id: "step1" },
         h("h2", { text: t("step1") }),
         h("p", { id: "desc", text: pay.description }),
         h("p", { class: "total", id: "msat", text: t("amount", { msat: groupDigits(pay.amountMsat), sats: sats(pay.amountMsat) }) }),
@@ -74,7 +75,7 @@ async function pay(): Promise<void> {
     state.steps.push(
       h(
         "div",
-        { class: "card", id: "step2" },
+        { class: "card stepcard", id: "step2" },
         h("h2", { text: t("step2") }),
         h("p", { text: t("network", { net: sum.network }) }),
         h("p", { text: t("invAmount", { msat: groupDigits(sum.msat) }) }),
@@ -88,7 +89,7 @@ async function pay(): Promise<void> {
     state.steps.push(
       h(
         "div",
-        { class: "card", id: "step3" },
+        { class: "card stepcard done", id: "step3" },
         h("h2", { text: t("step3") }),
         s && h("p", { text: s.url ? t("successLink") : t("successText") }),
         s && h("p", { id: "success-desc", text: s.description }),
@@ -142,8 +143,8 @@ function render(): void {
   input.addEventListener("input", () => (state.input = input.value));
   const hasCamera = "BarcodeDetector" in globalThis && !!navigator.mediaDevices?.getUserMedia;
   document.getElementById("app")!.replaceChildren(
-    h("div", { class: "sb", id: "sandbox", role: "note", text: t("banner") }),
-    h("header", { class: "top" }, h("span", { class: "wm", text: "jaay sim" }), h("button", { class: "chip", id: "lang", text: t("lang"), onclick: () => (toggleLang(), render()) })),
+    h("div", { class: "sb", id: "sandbox", role: "note" }, icon("flask"), h("span", { text: t("banner") })),
+    h("header", { class: "top" }, h("span", { class: "brand" }, mark(), h("span", { class: "wm", text: "jaay sim" })), h("button", { class: "chip", id: "lang", text: t("lang"), onclick: () => (toggleLang(), render()) })),
     h(
       "main",
       { id: "view" },

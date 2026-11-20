@@ -1,7 +1,18 @@
-pre, .mono { font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; margin: 4px 0; }
-details { border: 2px solid #000; padding: 8px 12px; margin: 12px 0; }
-summary { min-height: 48px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }
-video { display: block; width: 100%; max-width: 360px; margin: 8px auto; border: 2px solid #000; }
-a { color: #000; font-weight: 700; word-break: break-all; }
+/* Simulator on the shared jaay tokens (styles.css imports tokens.css). Only what differs from the merchant app. */
+#app { display: block; }
+main#view { display: flex; flex-direction: column; gap: var(--s3); }
+main#view > h1 { margin-top: var(--s1); }
 .sb { position: static; }
-#desc { word-break: break-all; }
+.stepcard { display: flex; flex-direction: column; gap: var(--s2); border-left: 4px solid var(--brand); }
+.stepcard h2 { margin: 0; font-size: 18px; }
+.stepcard.done { border-left-color: var(--ok); background: linear-gradient(var(--ok-soft), var(--surface) 64px); }
+#msat { font-size: 24px; line-height: 1.25; }
+pre, .mono {
+  font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-all; margin: 0;
+  max-height: 220px; overflow: auto; padding: var(--s3); background: var(--sand); border: 1px solid var(--line); border-radius: 10px;
+}
+#raw .hint { font-family: var(--mono); font-size: 12px; }
+video { display: block; width: 100%; max-width: 360px; margin: 0 auto; border-radius: var(--r-ctl); }
+a { color: var(--brand); font-weight: 700; word-break: break-all; }
+#desc { word-break: break-word; overflow-wrap: anywhere; }
+header .chip { min-height: 40px; }
